@@ -11,3 +11,6 @@ coverage
 server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
+
+# Uploaded files (user content, not source)
+server/uploads/
