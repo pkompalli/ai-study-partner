@@ -6,7 +6,8 @@ import { buildSummaryProsePrompt, buildSummaryInteractivePrompt } from './prompt
  * Streams the topic summary prose via SSE, then generates starters and sends a done event.
  */
 export interface SummaryInteractiveResult {
-  questions: Array<{ question: string; options: string[]; correctIndex: number; explanation: string }>;
+  question: string;
+  answerPills: string[];
   starters: string[];
 }
 
@@ -45,8 +46,9 @@ export async function streamTopicSummarySSE(
     res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
   }
 
-  // Generate check questions + starters non-streaming (fast, separate call)
-  let questions: SummaryInteractiveResult['questions'] = [];
+  // Generate question + answerPills + starters non-streaming (fast, separate call)
+  let question = '';
+  let answerPills: string[] = [];
   let starters: string[] = [];
   try {
     const interactivePrompt = buildSummaryInteractivePrompt(
@@ -58,14 +60,15 @@ export async function streamTopicSummarySSE(
     const raw = await chatCompletion([
       { role: 'system', content: interactivePrompt },
       { role: 'user', content: 'Generate the interactive elements.' },
-    ], { temperature: 0.5, maxTokens: 700 });
+    ], { temperature: 0.5, maxTokens: 400 });
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
     const parsed = JSON.parse(jsonStr);
-    questions = Array.isArray(parsed.questions) ? parsed.questions : [];
+    question = typeof parsed.question === 'string' ? parsed.question : '';
+    answerPills = Array.isArray(parsed.answerPills) ? parsed.answerPills : [];
     starters = Array.isArray(parsed.starters) ? parsed.starters : [];
   } catch { /* fields remain empty */ }
 
-  res.write(`data: ${JSON.stringify({ type: 'done', questions, starters })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'done', question, answerPills, starters })}\n\n`);
   res.end();
-  return { questions, starters };
+  return { question, answerPills, starters };
 }

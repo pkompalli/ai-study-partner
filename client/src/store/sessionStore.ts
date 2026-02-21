@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import api from '@/lib/api';
-import type { StudySession, SessionMessage, QuizQuestion, Flashcard, VideoLink, CheckQuestion, CrossTopicCard } from '@/types';
+import type { StudySession, SessionMessage, QuizQuestion, Flashcard, VideoLink, CrossTopicCard } from '@/types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001';
 
@@ -18,15 +18,12 @@ interface SessionState {
   activeQuiz: { id: string; questions: QuizQuestion[] } | null;
   activeFlashcards: { id: string; cards: Flashcard[] } | null;
   activeVideos: VideoLink[] | null;
-  topicSummary: { summary: string; checkQuestions: CheckQuestion[]; starters: string[] } | null;
+  topicSummary: { summary: string; question: string; answerPills: string[]; starters: string[] } | null;
   summaryStreaming: boolean;
   summaryStreamingContent: string;
-  responsePills: { checkQuestions: CheckQuestion[]; followupPills: string[] } | null;
+  responsePills: { question: string; answerPills: string[]; followupPills: string[] } | null;
   pillsLoading: boolean;
   flashcardsLoading: boolean;
-  // Accumulates check questions across the session; resets only on depth/summary change
-  accumulatedCheckQuestions: CheckQuestion[];
-  checkResetKey: number;
   crossTopicCards: CrossTopicCard[];
 
   startSession: (courseId: string, topicId?: string, chapterId?: string) => Promise<string>;
@@ -38,7 +35,7 @@ interface SessionState {
   submitQuizAnswers: (quizId: string, answers: Record<string, number>) => Promise<{ score: number; total: number }>;
   endSession: () => Promise<string>;
   clearSession: () => void;
-  fetchSummary: (sessionId: string, depth?: number, resetPanel?: boolean) => Promise<void>;
+  fetchSummary: (sessionId: string, depth?: number) => Promise<void>;
   fetchPills: (sessionId: string) => Promise<void>;
   fetchTopicBank: (sessionId: string) => Promise<void>;
   silentFetchFlashcards: (depth?: number) => Promise<void>;
@@ -61,8 +58,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   responsePills: null,
   pillsLoading: false,
   flashcardsLoading: false,
-  accumulatedCheckQuestions: [],
-  checkResetKey: 0,
   crossTopicCards: [],
 
   startSession: async (courseId, topicId, chapterId) => {
@@ -86,13 +81,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     const userMsg: SessionMessage = { role: 'user', content, content_type: 'text' };
     // Keep followupPills visible during streaming so the Explore bar doesn't vanish
-    // accumulatedCheckQuestions stays intact — panel shows existing questions while streaming
+    // Hide MCQ (question/answerPills) while streaming — user just clicked an answer
     set(state => ({
       messages: [...state.messages, userMsg],
       isStreaming: true,
       streamingContent: '',
       responsePills: state.responsePills
-        ? { checkQuestions: state.responsePills.checkQuestions, followupPills: state.responsePills.followupPills }
+        ? { question: '', answerPills: [], followupPills: state.responsePills.followupPills }
         : null,
     }));
 
@@ -219,13 +214,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       responsePills: null,
       pillsLoading: false,
       flashcardsLoading: false,
-      accumulatedCheckQuestions: [],
-      checkResetKey: 0,
       crossTopicCards: [],
     });
   },
 
-  fetchSummary: async (sessionId, depth = 0, resetPanel = false) => {
+  fetchSummary: async (sessionId, depth = 0) => {
     set({ summaryStreaming: true, summaryStreamingContent: '', topicSummary: null });
 
     try {
@@ -256,33 +249,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               accumulated += json.content;
               set({ summaryStreamingContent: accumulated });
             } else if (json.type === 'done') {
-              const summaryQuestions: CheckQuestion[] = json.questions ?? [];
-              set(state => {
-                let nextAccumulated: CheckQuestion[];
-                let nextResetKey = state.checkResetKey;
-
-                if (resetPanel) {
-                  // Explicit depth change: fresh deck for this depth
-                  nextAccumulated = summaryQuestions;
-                  nextResetKey = state.checkResetKey + 1;
-                } else {
-                  // Initial load or background refresh: append only truly new questions
-                  const existingTexts = new Set(state.accumulatedCheckQuestions.map(q => q.question));
-                  const novel = summaryQuestions.filter(q => !existingTexts.has(q.question));
-                  nextAccumulated = [...state.accumulatedCheckQuestions, ...novel];
-                }
-
-                return {
-                  topicSummary: {
-                    summary: accumulated,
-                    checkQuestions: summaryQuestions,
-                    starters: json.starters ?? [],
-                  },
-                  summaryStreaming: false,
-                  summaryStreamingContent: '',
-                  accumulatedCheckQuestions: nextAccumulated,
-                  checkResetKey: nextResetKey,
-                };
+              set({
+                topicSummary: {
+                  summary: accumulated,
+                  question: json.question ?? '',
+                  answerPills: json.answerPills ?? [],
+                  starters: json.starters ?? [],
+                },
+                summaryStreaming: false,
+                summaryStreamingContent: '',
               });
               // Auto-generate flashcards silently for the sidebar
               get().silentFetchFlashcards(depth).catch(() => {});
@@ -296,29 +271,25 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   fetchPills: async (sessionId) => {
-    const { data } = await api.get<{ questions: CheckQuestion[]; followupPills: string[] }>(
+    const { data } = await api.get<{ question: string; answerPills: string[]; followupPills: string[] }>(
       `/api/sessions/${sessionId}/pills`
     );
-    const newQuestions: CheckQuestion[] = data.questions ?? [];
-    set(state => {
-      const existingTexts = new Set(state.accumulatedCheckQuestions.map(q => q.question));
-      const novel = newQuestions.filter(q => !existingTexts.has(q.question));
-      return {
-        responsePills: { checkQuestions: newQuestions, followupPills: data.followupPills ?? [] },
-        accumulatedCheckQuestions: [...state.accumulatedCheckQuestions, ...novel],
-      };
+    set({
+      responsePills: {
+        question: data.question ?? '',
+        answerPills: data.answerPills ?? [],
+        followupPills: data.followupPills ?? [],
+      },
     });
   },
 
   fetchTopicBank: async (sessionId) => {
     try {
-      const [cardsRes, questionsRes, crossRes] = await Promise.all([
+      const [cardsRes, crossRes] = await Promise.all([
         api.get<{ cards: Flashcard[] }>(`/api/sessions/${sessionId}/topic-cards`),
-        api.get<{ questions: CheckQuestion[] }>(`/api/sessions/${sessionId}/topic-questions`),
         api.get<{ cards: CrossTopicCard[] }>(`/api/sessions/${sessionId}/cross-topic-cards`),
       ]);
       const cards = cardsRes.data.cards ?? [];
-      const questions = questionsRes.data.questions ?? [];
       const cross = crossRes.data.cards ?? [];
 
       if (cards.length > 0) {
@@ -326,15 +297,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
       if (cross.length > 0) {
         set({ crossTopicCards: cross });
-      }
-      if (questions.length > 0) {
-        set(state => {
-          const existingTexts = new Set(state.accumulatedCheckQuestions.map(q => q.question));
-          const novel = questions.filter(q => !existingTexts.has(q.question));
-          return novel.length > 0
-            ? { accumulatedCheckQuestions: [...state.accumulatedCheckQuestions, ...novel] }
-            : {};
-        });
       }
     } catch { /* ignore — topic bank may be empty for new topics */ }
   },

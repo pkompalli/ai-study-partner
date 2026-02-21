@@ -15,7 +15,7 @@ import { streamTopicSummarySSE } from '../services/llm/summaryGenerator.js';
 import { generateResponsePills } from '../services/llm/pillsGenerator.js';
 import {
   getTopicCards, getTopicCardFronts, saveTopicCards,
-  getTopicCheckQuestions, saveTopicCheckQuestions,
+  getTopicCheckQuestions,
   reviewTopicCard, getCrossTopicCards,
 } from '../db/topicBank.db.js';
 import { inferAcademicLevel } from '../services/llm/prompts.js';
@@ -202,7 +202,7 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
       chapterName = getChapterName(session['chapter_id'] as string);
     }
 
-    const { questions } = await streamTopicSummarySSE(res, {
+    await streamTopicSummarySSE(res, {
       courseName: courseCtx?.name ?? 'Course',
       topicName,
       chapterName,
@@ -211,14 +211,6 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
       goal: courseCtx?.goal,
       depth,
     });
-
-    // Persist summary check questions to topic bank (response already sent)
-    const topicId = session['topic_id'] as string | undefined;
-    if (topicId && questions.length > 0) {
-      saveTopicCheckQuestions(
-        userId, topicId, session['course_id'] as string, sessionId, depth, questions,
-      );
-    }
   } catch (err) {
     next(err);
   }
@@ -246,15 +238,6 @@ export async function getResponsePills(req: Request, res: Response, next: NextFu
 
     const level = inferAcademicLevel(courseCtx?.yearOfStudy, courseCtx?.name);
     const result = await generateResponsePills(lastAssistant.content, topicName, level.label);
-
-    // Persist check questions to topic bank
-    const topicId = session['topic_id'] as string | undefined;
-    if (topicId && result.questions.length > 0) {
-      saveTopicCheckQuestions(
-        userId, topicId, session['course_id'] as string, sessionId, 0, result.questions,
-      );
-    }
-
     res.json(result);
   } catch (err) {
     next(err);

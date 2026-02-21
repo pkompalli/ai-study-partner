@@ -249,23 +249,14 @@ export function buildSummaryInteractivePrompt(
 
 Return ONLY valid JSON — no markdown, no code fences:
 {
-  "questions": [
-    {
-      "question": "Comprehension question?",
-      "options": ["Option A", "Option B", "Option C"],
-      "correctIndex": 1,
-      "explanation": "1-2 sentences explaining why Option B is correct."
-    }
-  ],
+  "question": "One concise comprehension question about the key concept?",
+  "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
   "starters": ["Exploration suggestion 1...", "Suggestion 2...", "Suggestion 3..."]
 }
 
 Requirements:
-- questions: Generate 3-5 comprehension questions covering the key concepts in the summary
-- Each question: exactly 4 options — ONE correct answer and THREE plausible but wrong distractors
-- correctIndex: 0, 1, 2, or 3 — RANDOMIZE the correct position across questions (do not always use 0)
-- options: 2-6 words each, crisp and distinct
-- explanation: 1-2 plain-language sentences explaining why the correct answer is right
+- question: ONE concise comprehension question testing the most important concept in the summary
+- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE plausible distractors
 - starters: 3 exploration suggestions, 8-14 words each, framing interesting next angles on the topic
 - Calibrate depth and language to a ${level.label} student`;
 }
@@ -279,28 +270,19 @@ ${aiResponse.slice(0, 2000)}
 ---
 
 Generate:
-1. 2-3 comprehension questions based on the key concepts in the tutor's response
+1. ONE comprehension question based on the key concept just taught, with short answer pills
 2. 3 follow-up exploration suggestions for the student's next steps
 
 Return ONLY valid JSON — no markdown, no code fences:
 {
-  "questions": [
-    {
-      "question": "Comprehension question?",
-      "options": ["Option A", "Option B", "Option C"],
-      "correctIndex": 0,
-      "explanation": "1-2 sentences explaining why Option A is correct."
-    }
-  ],
+  "question": "One concise comprehension question about the key concept?",
+  "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
   "followupPills": ["Next exploration suggestion 1...", "Suggestion 2...", "Suggestion 3..."]
 }
 
 Guidelines:
-- questions: 2-3 questions testing the key concepts just taught
-- Each question: exactly 4 options — ONE correct answer and THREE plausible but wrong distractors
-- correctIndex: 0, 1, 2, or 3 — RANDOMIZE the correct position across questions
-- options: 2-6 words each, crisp and distinct
-- explanation: 1-2 plain-language sentences explaining the correct answer
+- question: ONE concise comprehension question about the most important concept just taught
+- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE plausible distractors
 - followupPills: 5-12 words each, concrete next-step explorations that haven't been covered yet`;
 }
 

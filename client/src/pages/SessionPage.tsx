@@ -1,13 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Compass, BookOpen, Link2 } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Link2, Lightbulb } from 'lucide-react';
 import { useSessionStore } from '@/store/sessionStore';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
 import { ChatWindow } from '@/components/session/ChatWindow';
 import { ChatInput } from '@/components/session/ChatInput';
 import { TopicSummary } from '@/components/session/TopicSummary';
-import { CheckPanel } from '@/components/session/CheckPanel';
 import { FlashcardDeck } from '@/components/flashcards/FlashcardDeck';
 import { Spinner } from '@/components/ui/Spinner';
 
@@ -19,7 +18,6 @@ export function SessionPage() {
     activeFlashcards, crossTopicCards,
     topicSummary, summaryStreaming, summaryStreamingContent,
     responsePills, pillsLoading, flashcardsLoading,
-    accumulatedCheckQuestions, checkResetKey,
     loadSession, sendMessage, clearSession,
     fetchSummary, regenerateMessage, reviewCard,
   } = useSessionStore();
@@ -76,8 +74,7 @@ export function SessionPage() {
     if (!id) return;
     const clamped = Math.max(0, Math.min(3, newDepth));
     setSummaryDepth(clamped);
-    // resetPanel=true: depth change is a deliberate fresh start for check questions
-    fetchSummary(id, clamped, true);
+    fetchSummary(id, clamped);
   };
 
   const handleRegenerate = async (visibleIndex: number, depth: number) => {
@@ -98,8 +95,14 @@ export function SessionPage() {
 
   const hasSummary = topicSummary !== null || summaryStreaming;
 
-  // Check questions grow throughout the session; only reset on depth change (checkResetKey)
-  const checkQuestions = accumulatedCheckQuestions;
+  // MCQ strip: show after pills load (post-chat) or from summary (initial state, no chat yet)
+  const mcqQuestion = responsePills?.answerPills?.length
+    ? responsePills.question
+    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.question ?? '') : '');
+  const mcqPills = responsePills?.answerPills?.length
+    ? responsePills.answerPills
+    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.answerPills ?? []) : []);
+  const showMCQ = mcqPills.length > 0 && !isStreaming && !pillsLoading && activeSession?.status === 'active';
 
   // Explore strip: followup pills persist during streaming; fall back to summary starters
   const exploreItems: string[] = responsePills?.followupPills?.length
@@ -163,6 +166,29 @@ export function SessionPage() {
             </div>
           </div>
 
+          {/* MCQ strip — pinned above Explore */}
+          {showMCQ && (
+            <div className="border-t border-orange-200 bg-orange-50 px-4 py-2.5 flex-shrink-0">
+              <p className="text-xs font-semibold text-orange-700 mb-1.5 flex items-center gap-1">
+                <Lightbulb className="h-3 w-3" /> Check
+              </p>
+              {mcqQuestion && (
+                <p className="text-xs text-orange-900 font-medium mb-2 leading-snug">{mcqQuestion}</p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {mcqPills.map((pill, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(pill)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-orange-200 text-orange-800 hover:bg-orange-100 transition-colors text-left"
+                  >
+                    {pill}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Explore strip — pinned above chat input */}
           {showExplore && (
             <div className="border-t border-sky-100 bg-sky-50 px-4 py-2.5 flex-shrink-0">
@@ -193,20 +219,11 @@ export function SessionPage() {
           )}
         </div>
 
-        {/* RIGHT: Check (top ~60%) + Flashcards (bottom ~40%) */}
+        {/* RIGHT: Flashcards */}
         <div className="flex flex-col w-80 flex-shrink-0">
 
-          {/* Check panel */}
-          <div className="flex-[3] min-h-0 overflow-hidden border-b border-gray-100">
-            <CheckPanel
-              questions={checkQuestions}
-              isLoading={pillsLoading || (summaryStreaming && checkQuestions.length === 0)}
-              resetKey={checkResetKey}
-            />
-          </div>
-
           {/* Flashcard panel */}
-          <div className="flex-[2] min-h-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {/* Header */}
             <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0">
               <p className="text-xs font-semibold text-gray-600">Flashcards</p>
