@@ -16,7 +16,7 @@ import { generateResponsePills } from '../services/llm/pillsGenerator.js';
 import {
   getTopicCards, getTopicCardFronts, saveTopicCards,
   getTopicCheckQuestions, saveTopicCheckQuestions,
-  reviewTopicCard,
+  reviewTopicCard, getCrossTopicCards,
 } from '../db/topicBank.db.js';
 import { inferAcademicLevel } from '../services/llm/prompts.js';
 
@@ -324,6 +324,27 @@ export async function reviewCard(req: Request, res: Response, next: NextFunction
       return;
     }
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getCrossTopicCardsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.id;
+    const sessionId = req.params['id'] as string;
+    const session = getSession(sessionId, userId);
+    const topicId = session['topic_id'] as string | undefined;
+    const courseId = session['course_id'] as string;
+
+    if (!topicId) {
+      res.json({ cards: [] });
+      return;
+    }
+
+    const topicName = getTopicName(topicId) ?? '';
+    const cards = getCrossTopicCards(userId, courseId, topicId, topicName);
+    res.json({ cards });
   } catch (err) {
     next(err);
   }

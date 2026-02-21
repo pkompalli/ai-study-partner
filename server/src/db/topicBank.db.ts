@@ -124,6 +124,66 @@ export function reviewTopicCard(
            timesSeen, timesCorrect, nextReviewAt };
 }
 
+// ─── Cross-topic surfacing ────────────────────────────────────────────────────
+
+export interface CrossTopicCard {
+  id: string;
+  front: string;
+  back: string;
+  mnemonic?: string;
+  source_topic_id: string;
+  source_topic_name: string;
+  score: number;
+}
+
+/**
+ * Returns up to `limit` cards from OTHER topics in the same course whose
+ * front/back text shares keywords with `currentTopicName`.
+ * Scoring: count of topic-name words (length > 3) that appear in card text.
+ */
+export function getCrossTopicCards(
+  userId: string,
+  courseId: string,
+  currentTopicId: string,
+  currentTopicName: string,
+  limit = 3,
+): CrossTopicCard[] {
+  const rows = db.prepare(`
+    SELECT tc.id, tc.front, tc.back, tc.mnemonic,
+           tc.topic_id AS source_topic_id,
+           t.name      AS source_topic_name
+    FROM topic_cards tc
+    JOIN topics t ON tc.topic_id = t.id
+    WHERE tc.user_id   = ?
+      AND tc.course_id = ?
+      AND tc.topic_id != ?
+    ORDER BY tc.times_correct DESC, tc.created_at DESC
+  `).all(userId, courseId, currentTopicId) as Array<{
+    id: string; front: string; back: string; mnemonic?: string;
+    source_topic_id: string; source_topic_name: string;
+  }>;
+
+  if (rows.length === 0) return [];
+
+  // Words from the current topic name that are long enough to be meaningful
+  const keywords = currentTopicName
+    .toLowerCase()
+    .split(/[\s\-_,/()]+/)
+    .filter(w => w.length > 3);
+
+  if (keywords.length === 0) return [];
+
+  return rows
+    .map(card => {
+      const text = `${card.front} ${card.back}`.toLowerCase();
+      const score = keywords.filter(kw => text.includes(kw)).length;
+      return { ...card, score };
+    })
+    .filter(c => c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
 // ─── Check questions ──────────────────────────────────────────────────────────
 
 export function getTopicCheckQuestions(userId: string, topicId: string): TopicCheckQuestion[] {

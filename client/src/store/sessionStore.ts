@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import api from '@/lib/api';
-import type { StudySession, SessionMessage, QuizQuestion, Flashcard, VideoLink, CheckQuestion } from '@/types';
+import type { StudySession, SessionMessage, QuizQuestion, Flashcard, VideoLink, CheckQuestion, CrossTopicCard } from '@/types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001';
 
@@ -27,6 +27,7 @@ interface SessionState {
   // Accumulates check questions across the session; resets only on depth/summary change
   accumulatedCheckQuestions: CheckQuestion[];
   checkResetKey: number;
+  crossTopicCards: CrossTopicCard[];
 
   startSession: (courseId: string, topicId?: string, chapterId?: string) => Promise<string>;
   loadSession: (sessionId: string) => Promise<void>;
@@ -62,6 +63,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   flashcardsLoading: false,
   accumulatedCheckQuestions: [],
   checkResetKey: 0,
+  crossTopicCards: [],
 
   startSession: async (courseId, topicId, chapterId) => {
     const { data } = await api.post<{ id: string }>('/api/sessions', { courseId, topicId, chapterId });
@@ -219,6 +221,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       flashcardsLoading: false,
       accumulatedCheckQuestions: [],
       checkResetKey: 0,
+      crossTopicCards: [],
     });
   },
 
@@ -309,18 +312,22 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   fetchTopicBank: async (sessionId) => {
     try {
-      const [cardsRes, questionsRes] = await Promise.all([
+      const [cardsRes, questionsRes, crossRes] = await Promise.all([
         api.get<{ cards: Flashcard[] }>(`/api/sessions/${sessionId}/topic-cards`),
         api.get<{ questions: CheckQuestion[] }>(`/api/sessions/${sessionId}/topic-questions`),
+        api.get<{ cards: CrossTopicCard[] }>(`/api/sessions/${sessionId}/cross-topic-cards`),
       ]);
       const cards = cardsRes.data.cards ?? [];
       const questions = questionsRes.data.questions ?? [];
+      const cross = crossRes.data.cards ?? [];
 
       if (cards.length > 0) {
         set({ activeFlashcards: { id: 'topic-bank', cards } });
       }
+      if (cross.length > 0) {
+        set({ crossTopicCards: cross });
+      }
       if (questions.length > 0) {
-        // Seed the accumulated deck; don't bump resetKey (this is history, not a depth change)
         set(state => {
           const existingTexts = new Set(state.accumulatedCheckQuestions.map(q => q.question));
           const novel = questions.filter(q => !existingTexts.has(q.question));

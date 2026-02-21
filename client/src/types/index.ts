@@ -114,6 +114,16 @@ export interface LessonArtifact {
   created_at: string;
 }
 
+export interface CrossTopicCard {
+  id: string;
+  front: string;
+  back: string;
+  mnemonic?: string;
+  source_topic_id: string;
+  source_topic_name: string;
+  score: number;
+}
+
 export interface TopicProgress {
   topic_id: string;
   status: 'not_started' | 'in_progress' | 'completed';

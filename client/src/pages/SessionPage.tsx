@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Compass, BookOpen } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Link2 } from 'lucide-react';
 import { useSessionStore } from '@/store/sessionStore';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
@@ -16,7 +16,7 @@ export function SessionPage() {
   const navigate = useNavigate();
   const {
     activeSession, messages, isStreaming, streamingContent, regeneratingIndex,
-    activeFlashcards,
+    activeFlashcards, crossTopicCards,
     topicSummary, summaryStreaming, summaryStreamingContent,
     responsePills, pillsLoading, flashcardsLoading,
     accumulatedCheckQuestions, checkResetKey,
@@ -29,6 +29,8 @@ export function SessionPage() {
   const [loading, setLoading] = useState(true);
   const [summaryDepth, setSummaryDepth] = useState(0);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  const [relatedOpen, setRelatedOpen] = useState(true);
+  const [flippedRelated, setFlippedRelated] = useState<Record<string, boolean>>({});
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -210,6 +212,47 @@ export function SessionPage() {
               <p className="text-xs font-semibold text-gray-600">Flashcards</p>
             </div>
 
+            {/* Related concepts from other topics */}
+            {crossTopicCards.length > 0 && (
+              <div className="border-b border-indigo-100 bg-indigo-50 flex-shrink-0">
+                <button
+                  onClick={() => setRelatedOpen(o => !o)}
+                  className="w-full flex items-center gap-1.5 px-3 py-2 text-left"
+                >
+                  <Link2 className="h-3 w-3 text-indigo-500 flex-shrink-0" />
+                  <span className="text-xs font-semibold text-indigo-700 flex-1">
+                    Related concepts
+                  </span>
+                  <span className="text-xs text-indigo-400">
+                    {relatedOpen ? '▲' : `▼ ${crossTopicCards.length}`}
+                  </span>
+                </button>
+                {relatedOpen && (
+                  <div className="px-3 pb-2 space-y-1.5">
+                    {crossTopicCards.map(card => (
+                      <div
+                        key={card.id}
+                        onClick={() => setFlippedRelated(prev => ({ ...prev, [card.id]: !prev[card.id] }))}
+                        className="rounded-lg border border-indigo-200 bg-white px-2.5 py-2 cursor-pointer hover:bg-indigo-50 transition-colors"
+                      >
+                        <p className="text-[10px] font-medium text-indigo-400 mb-0.5">
+                          {card.source_topic_name}
+                        </p>
+                        {flippedRelated[card.id] ? (
+                          <p className="text-xs text-gray-700 leading-snug">{card.back}</p>
+                        ) : (
+                          <p className="text-xs font-medium text-gray-800 leading-snug">{card.front}</p>
+                        )}
+                        {flippedRelated[card.id] && card.mnemonic && (
+                          <p className="text-[10px] text-indigo-500 mt-1 italic">💡 {card.mnemonic}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {flashcardsLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <Spinner className="h-5 w-5 text-primary-400" />
@@ -217,9 +260,9 @@ export function SessionPage() {
             ) : activeFlashcards ? (
               <div className="flex-1 overflow-y-auto">
                 <FlashcardDeck
-                cards={activeFlashcards.cards}
-                onReview={(cardId, correct) => reviewCard(cardId, correct)}
-              />
+                  cards={activeFlashcards.cards}
+                  onReview={(cardId, correct) => reviewCard(cardId, correct)}
+                />
               </div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center px-4 gap-2">
