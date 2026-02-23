@@ -18,10 +18,10 @@ interface SessionState {
   activeQuiz: { id: string; questions: QuizQuestion[] } | null;
   activeFlashcards: { id: string; cards: Flashcard[] } | null;
   activeVideos: VideoLink[] | null;
-  topicSummary: { summary: string; question: string; answerPills: string[]; starters: string[] } | null;
+  topicSummary: { summary: string; question: string; answerPills: string[]; correctIndex: number; explanation: string; starters: string[] } | null;
   summaryStreaming: boolean;
   summaryStreamingContent: string;
-  responsePills: { question: string; answerPills: string[]; followupPills: string[] } | null;
+  responsePills: { question: string; answerPills: string[]; correctIndex: number; explanation: string; followupPills: string[] } | null;
   pillsLoading: boolean;
   flashcardsLoading: boolean;
   crossTopicCards: CrossTopicCard[];
@@ -87,7 +87,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isStreaming: true,
       streamingContent: '',
       responsePills: state.responsePills
-        ? { question: '', answerPills: [], followupPills: state.responsePills.followupPills }
+        ? { question: '', answerPills: [], correctIndex: -1, explanation: '', followupPills: state.responsePills.followupPills }
         : null,
     }));
 
@@ -254,6 +254,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                   summary: accumulated,
                   question: json.question ?? '',
                   answerPills: json.answerPills ?? [],
+                  correctIndex: typeof json.correctIndex === 'number' ? json.correctIndex : -1,
+                  explanation: json.explanation ?? '',
                   starters: json.starters ?? [],
                 },
                 summaryStreaming: false,
@@ -271,13 +273,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   fetchPills: async (sessionId) => {
-    const { data } = await api.get<{ question: string; answerPills: string[]; followupPills: string[] }>(
+    const { data } = await api.get<{ question: string; answerPills: string[]; correctIndex: number; explanation: string; followupPills: string[] }>(
       `/api/sessions/${sessionId}/pills`
     );
     set({
       responsePills: {
         question: data.question ?? '',
         answerPills: data.answerPills ?? [],
+        correctIndex: typeof data.correctIndex === 'number' ? data.correctIndex : -1,
+        explanation: data.explanation ?? '',
         followupPills: data.followupPills ?? [],
       },
     });

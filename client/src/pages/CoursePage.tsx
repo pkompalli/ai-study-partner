@@ -10,13 +10,16 @@ import { Spinner } from '@/components/ui/Spinner';
 export function CoursePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { activeCourse, fetchCourse, loading } = useCourseStore();
+  const { activeCourse, fetchCourse, loading, topicProgress, fetchTopicProgress } = useCourseStore();
   const { startSession } = useSessionStore();
   const addToast = useUIStore(s => s.addToast);
 
   useEffect(() => {
-    if (id) fetchCourse(id);
-  }, [id, fetchCourse]);
+    if (id) {
+      fetchCourse(id);
+      fetchTopicProgress(id).catch(() => {});
+    }
+  }, [id, fetchCourse, fetchTopicProgress]);
 
   const handleStartSession = async (topicId: string, chapterId?: string) => {
     if (!id) return;
@@ -68,7 +71,7 @@ export function CoursePage() {
       <div>
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Course Structure</h2>
         {activeCourse.subjects && activeCourse.subjects.length > 0 ? (
-          <CourseTree subjects={activeCourse.subjects} onStartSession={handleStartSession} />
+          <CourseTree subjects={activeCourse.subjects} onStartSession={handleStartSession} topicProgress={topicProgress} />
         ) : (
           <p className="text-sm text-gray-500 text-center py-8">No topics found</p>
         )}

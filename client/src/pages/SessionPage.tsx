@@ -29,6 +29,7 @@ export function SessionPage() {
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [relatedOpen, setRelatedOpen] = useState(true);
   const [flippedRelated, setFlippedRelated] = useState<Record<string, boolean>>({});
+  const [mcqSelected, setMcqSelected] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -55,12 +56,29 @@ export function SessionPage() {
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
+  // MCQ strip: show after pills load (post-chat) or from summary (initial state, no chat yet)
+  const mcqQuestion = responsePills?.answerPills?.length
+    ? responsePills.question
+    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.question ?? '') : '');
+  const mcqPills = responsePills?.answerPills?.length
+    ? responsePills.answerPills
+    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.answerPills ?? []) : []);
+  const mcqCorrectIndex = responsePills?.answerPills?.length
+    ? responsePills.correctIndex
+    : (topicSummary?.correctIndex ?? -1);
+  const mcqExplanation = responsePills?.answerPills?.length
+    ? responsePills.explanation
+    : (topicSummary?.explanation ?? '');
+
   // Scroll to bottom on new messages or streaming
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [visibleMessages.length, streamingContent]);
+
+  // Reset MCQ selection when a new question arrives
+  useEffect(() => { setMcqSelected(null); }, [mcqQuestion]);
 
   const handleSend = async (content: string) => {
     try {
@@ -95,13 +113,6 @@ export function SessionPage() {
 
   const hasSummary = topicSummary !== null || summaryStreaming;
 
-  // MCQ strip: show after pills load (post-chat) or from summary (initial state, no chat yet)
-  const mcqQuestion = responsePills?.answerPills?.length
-    ? responsePills.question
-    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.question ?? '') : '');
-  const mcqPills = responsePills?.answerPills?.length
-    ? responsePills.answerPills
-    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.answerPills ?? []) : []);
   const showMCQ = mcqPills.length > 0 && !isStreaming && !pillsLoading && activeSession?.status === 'active';
 
   // Explore strip: followup pills persist during streaming; fall back to summary starters
@@ -176,16 +187,45 @@ export function SessionPage() {
                 <p className="text-xs text-orange-900 font-medium mb-2 leading-snug">{mcqQuestion}</p>
               )}
               <div className="flex flex-wrap gap-1.5">
-                {mcqPills.map((pill, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSend(pill)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-orange-200 text-orange-800 hover:bg-orange-100 transition-colors text-left"
-                  >
-                    {pill}
-                  </button>
-                ))}
+                {mcqPills.map((pill, i) => {
+                  const isSelected = mcqSelected === i;
+                  const isCorrect = i === mcqCorrectIndex;
+                  const locked = mcqSelected !== null;
+                  let pillClass = 'bg-white border border-orange-200 text-orange-800 hover:bg-orange-100';
+                  if (locked) {
+                    if (isCorrect) {
+                      pillClass = 'bg-green-100 border border-green-400 text-green-800';
+                    } else if (isSelected) {
+                      pillClass = 'bg-red-100 border border-red-400 text-red-800';
+                    } else {
+                      pillClass = 'bg-white border border-orange-100 text-orange-400 opacity-60';
+                    }
+                  }
+                  return (
+                    <button
+                      key={i}
+                      disabled={locked}
+                      onClick={() => setMcqSelected(i)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors text-left flex items-center gap-1 ${pillClass}`}
+                    >
+                      {locked && isCorrect && <span>✓</span>}
+                      {locked && isSelected && !isCorrect && <span>✗</span>}
+                      {pill}
+                    </button>
+                  );
+                })}
               </div>
+              {mcqSelected !== null && mcqExplanation && (
+                <div className="mt-2 space-y-1.5">
+                  <p className="text-xs text-orange-800 leading-snug">{mcqExplanation}</p>
+                  <button
+                    onClick={() => handleSend(mcqQuestion)}
+                    className="text-xs font-medium text-orange-600 hover:text-orange-800 underline underline-offset-2"
+                  >
+                    Ask about this →
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

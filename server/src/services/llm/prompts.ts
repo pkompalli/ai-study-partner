@@ -251,12 +251,16 @@ Return ONLY valid JSON — no markdown, no code fences:
 {
   "question": "One concise comprehension question about the key concept?",
   "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
+  "correctIndex": 2,
+  "explanation": "1-2 sentence plain-language explanation of why the correct answer is right.",
   "starters": ["Exploration suggestion 1...", "Suggestion 2...", "Suggestion 3..."]
 }
 
 Requirements:
 - question: ONE concise comprehension question testing the most important concept in the summary
-- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE plausible distractors
+- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE plausible distractors; RANDOMIZE the position of the correct answer
+- correctIndex: integer 0–3 indicating which answerPill is correct
+- explanation: 1-2 sentences in plain language explaining why the correct answer is right
 - starters: 3 exploration suggestions, 8-14 words each, framing interesting next angles on the topic
 - Calibrate depth and language to a ${level.label} student`;
 }
@@ -277,12 +281,16 @@ Return ONLY valid JSON — no markdown, no code fences:
 {
   "question": "One concise comprehension question about the key concept?",
   "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
+  "correctIndex": 1,
+  "explanation": "1-2 sentence plain-language explanation of why the correct answer is right.",
   "followupPills": ["Next exploration suggestion 1...", "Suggestion 2...", "Suggestion 3..."]
 }
 
 Guidelines:
 - question: ONE concise comprehension question about the most important concept just taught
-- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE plausible distractors
+- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE plausible distractors; RANDOMIZE the position of the correct answer
+- correctIndex: integer 0–3 indicating which answerPill is correct
+- explanation: 1-2 sentences in plain language explaining why the correct answer is right
 - followupPills: 5-12 words each, concrete next-step explorations that haven't been covered yet`;
 }
 

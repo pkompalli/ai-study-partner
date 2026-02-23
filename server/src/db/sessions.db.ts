@@ -113,6 +113,16 @@ export function saveFlashcardSet(
   return id;
 }
 
+export function getTopicProgressForCourse(
+  userId: string,
+  courseId: string,
+): Record<string, { status: string; last_studied: string }> {
+  const rows = db.prepare(
+    'SELECT topic_id, status, last_studied FROM topic_progress WHERE user_id = ? AND course_id = ?'
+  ).all(userId, courseId) as Array<{ topic_id: string; status: string; last_studied: string }>;
+  return Object.fromEntries(rows.map(r => [r.topic_id, { status: r.status, last_studied: r.last_studied }]));
+}
+
 export function upsertTopicProgress(
   userId: string,
   topicId: string,

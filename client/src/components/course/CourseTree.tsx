@@ -6,9 +6,10 @@ import type { Subject } from '@/types';
 interface CourseTreeProps {
   subjects: Subject[];
   onStartSession: (topicId: string, chapterId?: string) => void;
+  topicProgress?: Record<string, { status: string }>;
 }
 
-export function CourseTree({ subjects, onStartSession }: CourseTreeProps) {
+export function CourseTree({ subjects, onStartSession, topicProgress }: CourseTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set([subjects[0]?.id]));
 
   const toggle = (id: string) => {
@@ -37,10 +38,18 @@ export function CourseTree({ subjects, onStartSession }: CourseTreeProps) {
 
           {expanded.has(subject.id) && (
             <div className="divide-y divide-gray-50">
-              {subject.topics.map(topic => (
+              {subject.topics.map(topic => {
+                const topicStatus = topicProgress?.[topic.id]?.status;
+                const dot = topicStatus === 'completed' ? 'bg-green-400'
+                  : topicStatus === 'in_progress' ? 'bg-amber-400'
+                  : 'bg-gray-200';
+                return (
                 <div key={topic.id} className="px-4 py-3">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-sm font-medium text-gray-800">{topic.name}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`h-2 w-2 rounded-full flex-shrink-0 mt-0.5 ${dot}`} />
+                      <span className="text-sm font-medium text-gray-800">{topic.name}</span>
+                    </div>
                     <button
                       onClick={() => onStartSession(topic.id)}
                       className="flex items-center gap-1 px-3 py-1 rounded-lg bg-primary-50 text-primary-700 text-xs font-medium hover:bg-primary-100 transition-colors"
@@ -63,7 +72,8 @@ export function CourseTree({ subjects, onStartSession }: CourseTreeProps) {
                     ))}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -6,17 +6,20 @@ interface CourseState {
   courses: Course[];
   activeCourse: Course | null;
   loading: boolean;
+  topicProgress: Record<string, { status: string; last_studied: string }>;
   fetchCourses: () => Promise<void>;
   fetchCourse: (id: string) => Promise<Course>;
   createCourse: (payload: unknown) => Promise<string>;
   deleteCourse: (id: string) => Promise<void>;
   setActiveCourse: (course: Course | null) => void;
+  fetchTopicProgress: (courseId: string) => Promise<void>;
 }
 
 export const useCourseStore = create<CourseState>((set, get) => ({
   courses: [],
   activeCourse: null,
   loading: false,
+  topicProgress: {},
 
   fetchCourses: async () => {
     set({ loading: true });
@@ -46,4 +49,9 @@ export const useCourseStore = create<CourseState>((set, get) => ({
   },
 
   setActiveCourse: (course) => set({ activeCourse: course }),
+
+  fetchTopicProgress: async (courseId) => {
+    const { data } = await api.get<Record<string, { status: string; last_studied: string }>>(`/api/courses/${courseId}/progress`);
+    set({ topicProgress: data });
+  },
 }));

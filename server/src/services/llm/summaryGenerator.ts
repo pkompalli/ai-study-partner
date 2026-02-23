@@ -8,6 +8,8 @@ import { buildSummaryProsePrompt, buildSummaryInteractivePrompt } from './prompt
 export interface SummaryInteractiveResult {
   question: string;
   answerPills: string[];
+  correctIndex: number;
+  explanation: string;
   starters: string[];
 }
 
@@ -46,9 +48,11 @@ export async function streamTopicSummarySSE(
     res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
   }
 
-  // Generate question + answerPills + starters non-streaming (fast, separate call)
+  // Generate question + answerPills + correctIndex + explanation + starters non-streaming (fast, separate call)
   let question = '';
   let answerPills: string[] = [];
+  let correctIndex = -1;
+  let explanation = '';
   let starters: string[] = [];
   try {
     const interactivePrompt = buildSummaryInteractivePrompt(
@@ -60,15 +64,17 @@ export async function streamTopicSummarySSE(
     const raw = await chatCompletion([
       { role: 'system', content: interactivePrompt },
       { role: 'user', content: 'Generate the interactive elements.' },
-    ], { temperature: 0.5, maxTokens: 400 });
+    ], { temperature: 0.5, maxTokens: 500 });
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
     const parsed = JSON.parse(jsonStr);
     question = typeof parsed.question === 'string' ? parsed.question : '';
     answerPills = Array.isArray(parsed.answerPills) ? parsed.answerPills : [];
+    correctIndex = typeof parsed.correctIndex === 'number' ? parsed.correctIndex : -1;
+    explanation = typeof parsed.explanation === 'string' ? parsed.explanation : '';
     starters = Array.isArray(parsed.starters) ? parsed.starters : [];
   } catch { /* fields remain empty */ }
 
-  res.write(`data: ${JSON.stringify({ type: 'done', question, answerPills, starters })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'done', question, answerPills, correctIndex, explanation, starters })}\n\n`);
   res.end();
-  return { question, answerPills, starters };
+  return { question, answerPills, correctIndex, explanation, starters };
 }
