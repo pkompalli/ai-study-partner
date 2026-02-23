@@ -14,7 +14,7 @@ import { fetchVideoLinks } from '../services/youtube.js';
 import { streamTopicSummarySSE } from '../services/llm/summaryGenerator.js';
 import { generateResponsePills } from '../services/llm/pillsGenerator.js';
 import {
-  getTopicCards, getTopicCardFronts, saveTopicCards,
+  getTopicCards, getTopicCardFronts, saveTopicCards, saveSingleCard,
   getTopicCheckQuestions,
   reviewTopicCard, getCrossTopicCards,
 } from '../db/topicBank.db.js';
@@ -291,6 +291,37 @@ export async function regenerateMessage(req: Request, res: Response, next: NextF
 
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
     res.end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function saveCardFromQuestion(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.id;
+    const sessionId = req.params['id'] as string;
+    const { question, answer, explanation } = req.body as {
+      question: string; answer: string; explanation: string;
+    };
+
+    const session = getSession(sessionId, userId);
+    const topicId = session['topic_id'] as string | undefined;
+    const courseId = session['course_id'] as string;
+
+    if (!topicId) {
+      res.status(400).json({ error: 'Session has no topic' });
+      return;
+    }
+
+    const back = explanation ? `${answer}\n\n${explanation}` : answer;
+    const card = saveSingleCard(userId, topicId, courseId, sessionId, question, back);
+
+    if (!card) {
+      res.status(500).json({ error: 'Failed to save card' });
+      return;
+    }
+
+    res.json({ card });
   } catch (err) {
     next(err);
   }

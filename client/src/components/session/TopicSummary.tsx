@@ -1,8 +1,15 @@
 import { Minus, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Spinner } from '@/components/ui/Spinner';
+import { useTypewriter } from '@/hooks/useTypewriter';
 
-const DEPTH_LABELS = ['Standard', 'Detailed', 'Thorough', 'Deep Dive'];
+const DEPTH_LABELS: Record<number, string> = {
+  1: 'Key Points',
+  2: 'Overview',
+  3: 'Explained',
+  4: 'In Depth',
+  5: 'Textbook',
+};
 
 interface TopicSummaryProps {
   summary: string;
@@ -23,6 +30,8 @@ export function TopicSummary({
   depth,
   onDepthChange,
 }: TopicSummaryProps) {
+  const displayed = useTypewriter(isStreaming ? streamingContent : '');
+
   return (
     <div className="my-4 rounded-2xl border border-primary-100 bg-primary-50/40 shadow-sm overflow-hidden">
       {/* Header */}
@@ -40,7 +49,7 @@ export function TopicSummary({
           <div className="flex items-center gap-1">
             <button
               onClick={() => onDepthChange(depth - 1)}
-              disabled={depth === 0 || isStreaming}
+              disabled={depth <= 1 || isStreaming}
               className="h-6 w-6 rounded-md flex items-center justify-center text-primary-600 hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               title="Less depth"
             >
@@ -48,7 +57,7 @@ export function TopicSummary({
             </button>
             <button
               onClick={() => onDepthChange(depth + 1)}
-              disabled={depth === 3 || isStreaming}
+              disabled={depth >= 5 || isStreaming}
               className="h-6 w-6 rounded-md flex items-center justify-center text-primary-600 hover:bg-primary-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               title="More depth"
             >
@@ -61,14 +70,14 @@ export function TopicSummary({
       {/* Content — hidden when collapsed */}
       {!collapsed && (
         <div className="px-4 py-4">
-          {isStreaming && !streamingContent ? (
+          {isStreaming && !displayed ? (
             <div className="flex items-center justify-center py-8">
               <Spinner className="h-6 w-6 text-primary-400" />
             </div>
           ) : isStreaming ? (
-            /* Plain text during streaming to prevent ReactMarkdown flickering */
+            /* Typewriter animation during streaming — prevents ReactMarkdown flickering */
             <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-              {streamingContent}
+              {displayed}
               <span className="inline-block w-0.5 h-4 bg-primary-400 ml-0.5 align-middle animate-pulse" />
             </div>
           ) : (

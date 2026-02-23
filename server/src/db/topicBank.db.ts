@@ -66,6 +66,38 @@ export function saveTopicCards(
   })(cards);
 }
 
+export function saveSingleCard(
+  userId: string,
+  topicId: string,
+  courseId: string,
+  sessionId: string,
+  front: string,
+  back: string,
+): TopicCard | null {
+  const id = randomUUID();
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO topic_cards
+      (id, user_id, topic_id, course_id, session_id, front, back, mnemonic, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0)
+  `);
+  const result = stmt.run(id, userId, topicId, courseId, sessionId, front, back);
+
+  if (result.changes === 0) {
+    // Already saved — return existing card
+    return db.prepare(`
+      SELECT id, front, back, mnemonic, depth, ease_factor, interval_days,
+             times_seen, times_correct, next_review_at, last_reviewed_at, created_at
+      FROM topic_cards WHERE user_id = ? AND topic_id = ? AND front = ?
+    `).get(userId, topicId, front) as TopicCard ?? null;
+  }
+
+  return db.prepare(`
+    SELECT id, front, back, mnemonic, depth, ease_factor, interval_days,
+           times_seen, times_correct, next_review_at, last_reviewed_at, created_at
+    FROM topic_cards WHERE id = ?
+  `).get(id) as TopicCard ?? null;
+}
+
 // ─── SM-2 review ─────────────────────────────────────────────────────────────
 
 export interface ReviewResult {

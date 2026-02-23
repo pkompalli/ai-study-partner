@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Compass, BookOpen, Link2, Lightbulb } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Lightbulb, Menu, Brain, ChevronLeft, ChevronRight, Bookmark, Check } from 'lucide-react';
 import { useSessionStore } from '@/store/sessionStore';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
@@ -9,27 +9,39 @@ import { ChatInput } from '@/components/session/ChatInput';
 import { TopicSummary } from '@/components/session/TopicSummary';
 import { FlashcardDeck } from '@/components/flashcards/FlashcardDeck';
 import { Spinner } from '@/components/ui/Spinner';
+import { SidebarCourseTree } from '@/components/session/SidebarCourseTree';
 
 export function SessionPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const {
     activeSession, messages, isStreaming, streamingContent, regeneratingIndex,
-    activeFlashcards, crossTopicCards,
+    activeFlashcards,
     topicSummary, summaryStreaming, summaryStreamingContent,
-    responsePills, pillsLoading, flashcardsLoading,
+    responsePills, pillsLoading,
     loadSession, sendMessage, clearSession,
-    fetchSummary, regenerateMessage, reviewCard,
+    fetchSummary, regenerateMessage, reviewCard, saveCardFromQuestion,
   } = useSessionStore();
-  const { fetchCourse, setActiveCourse } = useCourseStore();
+  const { fetchCourse, setActiveCourse, activeCourse } = useCourseStore();
   const { addToast } = useUIStore();
 
   const [loading, setLoading] = useState(true);
-  const [summaryDepth, setSummaryDepth] = useState(0);
+  const [summaryDepth, setSummaryDepth] = useState(3);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
-  const [relatedOpen, setRelatedOpen] = useState(true);
-  const [flippedRelated, setFlippedRelated] = useState<Record<string, boolean>>({});
-  const [mcqSelected, setMcqSelected] = useState<number | null>(null);
+  // Panel toggles
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(true);
+
+  // MCQ history
+  const [mcqHistory, setMcqHistory] = useState<
+    Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }>
+  >([]);
+  const [mcqHistoryIndex, setMcqHistoryIndex] = useState(0);
+  const [mcqSelections, setMcqSelections] = useState<Record<number, number>>({});
+  const [savedMcqIndices, setSavedMcqIndices] = useState<Set<number>>(new Set());
+
+  // Flashcard panel
+  const [reviewMode, setReviewMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -40,13 +52,7 @@ export function SessionPage() {
       if (session?.course_id) {
         fetchCourse(session.course_id).catch(() => {});
       }
-      const msgs = useSessionStore.getState().messages.filter(m => m.role !== 'system');
-      if (msgs.length === 0) {
-        fetchSummary(id, 0);
-      } else {
-        setSummaryCollapsed(true);
-        fetchSummary(id, 0);
-      }
+      fetchSummary(id, 0);
     }).finally(() => setLoading(false));
     return () => {
       clearSession();
@@ -56,7 +62,7 @@ export function SessionPage() {
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
-  // MCQ strip: show after pills load (post-chat) or from summary (initial state, no chat yet)
+  // MCQ derived values
   const mcqQuestion = responsePills?.answerPills?.length
     ? responsePills.question
     : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.question ?? '') : '');
@@ -77,8 +83,27 @@ export function SessionPage() {
     }
   }, [visibleMessages.length, streamingContent]);
 
-  // Reset MCQ selection when a new question arrives
-  useEffect(() => { setMcqSelected(null); }, [mcqQuestion]);
+  // Accumulate MCQ history — new question → push + jump to end
+  useEffect(() => {
+    if (!mcqQuestion || !mcqPills.length) return;
+    setMcqHistory(prev => {
+      if (prev[prev.length - 1]?.question === mcqQuestion) return prev;
+      const next = [...prev, {
+        question: mcqQuestion, answerPills: mcqPills,
+        correctIndex: mcqCorrectIndex, explanation: mcqExplanation,
+      }];
+      setMcqHistoryIndex(next.length - 1);
+      return next;
+    });
+  }, [mcqQuestion]);
+
+  const currentMcq = mcqHistory[mcqHistoryIndex] ?? null;
+
+  // Explore strip
+  const exploreItems: string[] = responsePills?.followupPills?.length
+    ? responsePills.followupPills
+    : (topicSummary?.starters ?? []);
+  const showExplore = exploreItems.length > 0 && !summaryStreaming && activeSession?.status === 'active';
 
   const handleSend = async (content: string) => {
     try {
@@ -90,7 +115,7 @@ export function SessionPage() {
 
   const handleSummaryDepthChange = async (newDepth: number) => {
     if (!id) return;
-    const clamped = Math.max(0, Math.min(3, newDepth));
+    const clamped = Math.max(1, Math.min(5, newDepth));
     setSummaryDepth(clamped);
     fetchSummary(id, clamped);
   };
@@ -103,6 +128,14 @@ export function SessionPage() {
     }
   };
 
+  const handleSaveCard = async (historyIndex: number) => {
+    const mcq = mcqHistory[historyIndex];
+    if (!mcq) return;
+    const correctAnswer = mcq.answerPills[mcq.correctIndex];
+    const saved = await saveCardFromQuestion(mcq.question, correctAnswer, mcq.explanation);
+    if (saved) setSavedMcqIndices(prev => new Set(prev).add(historyIndex));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -113,20 +146,16 @@ export function SessionPage() {
 
   const hasSummary = topicSummary !== null || summaryStreaming;
 
-  const showMCQ = mcqPills.length > 0 && !isStreaming && !pillsLoading && activeSession?.status === 'active';
-
-  // Explore strip: followup pills persist during streaming; fall back to summary starters
-  const exploreItems: string[] = responsePills?.followupPills?.length
-    ? responsePills.followupPills
-    : (topicSummary?.starters ?? []);
-  const showExplore = exploreItems.length > 0 && !summaryStreaming && activeSession?.status === 'active';
-
   return (
     <div className="flex flex-col h-[calc(100vh-56px)]">
-      {/* Session header */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-white border-b border-gray-100">
+
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-100 flex-shrink-0">
         <button onClick={() => navigate(-1)} className="p-1 rounded-lg hover:bg-gray-100">
           <ArrowLeft className="h-4 w-4 text-gray-600" />
+        </button>
+        <button onClick={() => setLeftOpen(o => !o)} className="p-1 rounded-lg hover:bg-gray-100">
+          <Menu className="h-4 w-4 text-gray-500" />
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-gray-900 truncate">
@@ -136,12 +165,33 @@ export function SessionPage() {
             {activeSession?.status === 'active' ? 'Active session' : 'Session ended'}
           </p>
         </div>
+        <button onClick={() => setRightOpen(o => !o)} className="p-1 rounded-lg hover:bg-gray-100">
+          <Brain className="h-4 w-4 text-gray-500" />
+        </button>
       </div>
 
-      {/* Two-column body */}
+      {/* 3-column body */}
       <div className="flex flex-1 min-h-0">
 
-        {/* LEFT: Lesson area */}
+        {/* LEFT PANEL — collapsible, default closed */}
+        {leftOpen && (
+          <div className="w-56 flex-shrink-0 border-r border-gray-100 flex flex-col overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-100 flex-shrink-0">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Topics</p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {activeCourse?.subjects && (
+                <SidebarCourseTree
+                  subjects={activeCourse.subjects}
+                  courseId={activeSession?.course_id ?? ''}
+                  onNavigate={() => setLeftOpen(false)}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* CENTER COLUMN */}
         <div className="flex flex-col flex-1 min-w-0 border-r border-gray-100">
 
           {/* Scrollable content */}
@@ -177,58 +227,6 @@ export function SessionPage() {
             </div>
           </div>
 
-          {/* MCQ strip — pinned above Explore */}
-          {showMCQ && (
-            <div className="border-t border-orange-200 bg-orange-50 px-4 py-2.5 flex-shrink-0">
-              <p className="text-xs font-semibold text-orange-700 mb-1.5 flex items-center gap-1">
-                <Lightbulb className="h-3 w-3" /> Check
-              </p>
-              {mcqQuestion && (
-                <p className="text-xs text-orange-900 font-medium mb-2 leading-snug">{mcqQuestion}</p>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                {mcqPills.map((pill, i) => {
-                  const isSelected = mcqSelected === i;
-                  const isCorrect = i === mcqCorrectIndex;
-                  const locked = mcqSelected !== null;
-                  let pillClass = 'bg-white border border-orange-200 text-orange-800 hover:bg-orange-100';
-                  if (locked) {
-                    if (isCorrect) {
-                      pillClass = 'bg-green-100 border border-green-400 text-green-800';
-                    } else if (isSelected) {
-                      pillClass = 'bg-red-100 border border-red-400 text-red-800';
-                    } else {
-                      pillClass = 'bg-white border border-orange-100 text-orange-400 opacity-60';
-                    }
-                  }
-                  return (
-                    <button
-                      key={i}
-                      disabled={locked}
-                      onClick={() => setMcqSelected(i)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors text-left flex items-center gap-1 ${pillClass}`}
-                    >
-                      {locked && isCorrect && <span>✓</span>}
-                      {locked && isSelected && !isCorrect && <span>✗</span>}
-                      {pill}
-                    </button>
-                  );
-                })}
-              </div>
-              {mcqSelected !== null && mcqExplanation && (
-                <div className="mt-2 space-y-1.5">
-                  <p className="text-xs text-orange-800 leading-snug">{mcqExplanation}</p>
-                  <button
-                    onClick={() => handleSend(mcqQuestion)}
-                    className="text-xs font-medium text-orange-600 hover:text-orange-800 underline underline-offset-2"
-                  >
-                    Ask about this →
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Explore strip — pinned above chat input */}
           {showExplore && (
             <div className="border-t border-sky-100 bg-sky-50 px-4 py-2.5 flex-shrink-0">
@@ -259,78 +257,171 @@ export function SessionPage() {
           )}
         </div>
 
-        {/* RIGHT: Flashcards */}
-        <div className="flex flex-col w-80 flex-shrink-0">
+        {/* RIGHT PANEL — collapsible, default open */}
+        {rightOpen && (
+          <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col min-h-0">
 
-          {/* Flashcard panel */}
-          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0">
-              <p className="text-xs font-semibold text-gray-600">Flashcards</p>
-            </div>
+            {/* MCQ — 65% */}
+            <div className="flex flex-col border-b border-gray-100 min-h-0 overflow-hidden" style={{ flex: 65 }}>
+              {/* Header with history navigation */}
+              <div className="px-3 py-2 border-b border-gray-100 bg-orange-50 flex-shrink-0 flex items-center gap-1">
+                <Lightbulb className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
+                <span className="text-xs font-semibold text-orange-700 flex-1">Check</span>
+                {mcqHistory.length > 0 && (
+                  <>
+                    <button
+                      disabled={mcqHistoryIndex === 0}
+                      onClick={() => setMcqHistoryIndex(i => i - 1)}
+                      className="p-0.5 rounded hover:bg-orange-100 disabled:opacity-30 transition-opacity"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5 text-orange-500" />
+                    </button>
+                    <span className="text-xs text-orange-400 tabular-nums px-0.5">
+                      {mcqHistoryIndex + 1}/{mcqHistory.length}
+                    </span>
+                    <button
+                      disabled={mcqHistoryIndex === mcqHistory.length - 1}
+                      onClick={() => setMcqHistoryIndex(i => i + 1)}
+                      className="p-0.5 rounded hover:bg-orange-100 disabled:opacity-30 transition-opacity"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5 text-orange-500" />
+                    </button>
+                  </>
+                )}
+              </div>
 
-            {/* Related concepts from other topics */}
-            {crossTopicCards.length > 0 && (
-              <div className="border-b border-indigo-100 bg-indigo-50 flex-shrink-0">
-                <button
-                  onClick={() => setRelatedOpen(o => !o)}
-                  className="w-full flex items-center gap-1.5 px-3 py-2 text-left"
-                >
-                  <Link2 className="h-3 w-3 text-indigo-500 flex-shrink-0" />
-                  <span className="text-xs font-semibold text-indigo-700 flex-1">
-                    Related concepts
-                  </span>
-                  <span className="text-xs text-indigo-400">
-                    {relatedOpen ? '▲' : `▼ ${crossTopicCards.length}`}
-                  </span>
-                </button>
-                {relatedOpen && (
-                  <div className="px-3 pb-2 space-y-1.5">
-                    {crossTopicCards.map(card => (
-                      <div
-                        key={card.id}
-                        onClick={() => setFlippedRelated(prev => ({ ...prev, [card.id]: !prev[card.id] }))}
-                        className="rounded-lg border border-indigo-200 bg-white px-2.5 py-2 cursor-pointer hover:bg-indigo-50 transition-colors"
-                      >
-                        <p className="text-[10px] font-medium text-indigo-400 mb-0.5">
-                          {card.source_topic_name}
-                        </p>
-                        {flippedRelated[card.id] ? (
-                          <p className="text-xs text-gray-700 leading-snug">{card.back}</p>
-                        ) : (
-                          <p className="text-xs font-medium text-gray-800 leading-snug">{card.front}</p>
+              {/* Scrollable MCQ body */}
+              <div className="flex-1 overflow-y-auto px-3 py-3">
+                {currentMcq ? (
+                  <>
+                    <p className="text-sm font-medium text-gray-800 mb-3 leading-snug">
+                      {currentMcq.question}
+                    </p>
+                    <div className="space-y-2">
+                      {currentMcq.answerPills.map((pill, i) => {
+                        const selected = mcqSelections[mcqHistoryIndex];
+                        const locked = selected !== undefined;
+                        const isSelected = selected === i;
+                        const isCorrect = i === currentMcq.correctIndex;
+                        let cls = 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 cursor-pointer';
+                        if (locked) {
+                          if (isSelected && isCorrect)  cls = 'bg-green-100 border border-green-400 text-green-800';
+                          else if (isCorrect)            cls = 'bg-green-50  border border-green-300 text-green-700';
+                          else if (isSelected)           cls = 'bg-red-100   border border-red-400   text-red-800';
+                          else                           cls = 'bg-white border border-gray-100 text-gray-400 opacity-50';
+                        }
+                        return (
+                          <button
+                            key={i}
+                            disabled={locked}
+                            onClick={() => setMcqSelections(prev => ({ ...prev, [mcqHistoryIndex]: i }))}
+                            className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center gap-2 ${cls}`}
+                          >
+                            {locked && isSelected && isCorrect  && <span className="flex-shrink-0 text-green-600">✓</span>}
+                            {locked && isSelected && !isCorrect && <span className="flex-shrink-0 text-red-600">✗</span>}
+                            <span>{pill}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {mcqSelections[mcqHistoryIndex] !== undefined && (
+                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                        {currentMcq.explanation && (
+                          <p className="text-xs text-gray-600 leading-snug">{currentMcq.explanation}</p>
                         )}
-                        {flippedRelated[card.id] && card.mnemonic && (
-                          <p className="text-[10px] text-indigo-500 mt-1 italic">💡 {card.mnemonic}</p>
+                        {savedMcqIndices.has(mcqHistoryIndex) ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
+                            <Check className="h-3 w-3" /> Saved to deck
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleSaveCard(mcqHistoryIndex)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                          >
+                            <Bookmark className="h-3 w-3" /> Save as flashcard
+                          </button>
                         )}
                       </div>
-                    ))}
+                    )}
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-2">
+                    {pillsLoading || summaryStreaming
+                      ? <Spinner className="h-5 w-5 text-orange-300" />
+                      : <p className="text-xs text-gray-400 text-center leading-relaxed">Questions appear here<br/>as you study.</p>
+                    }
                   </div>
                 )}
               </div>
-            )}
+            </div>
 
-            {flashcardsLoading ? (
-              <div className="flex-1 flex items-center justify-center">
-                <Spinner className="h-5 w-5 text-primary-400" />
-              </div>
-            ) : activeFlashcards ? (
-              <div className="flex-1 overflow-y-auto">
-                <FlashcardDeck
-                  cards={activeFlashcards.cards}
-                  onReview={(cardId, correct) => reviewCard(cardId, correct)}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center px-4 gap-2">
-                <BookOpen className="h-6 w-6 text-gray-300" />
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Flashcards will appear once content loads.
-                </p>
-              </div>
-            )}
+            {/* Saved cards — 35% */}
+            {(() => {
+              const savedCards = activeFlashcards?.cards ?? [];
+              return (
+                <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: 35 }}>
+                  {reviewMode ? (
+                    <>
+                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0 flex items-center gap-2">
+                        <p className="text-xs font-semibold text-gray-600 flex-1">Review</p>
+                        <button
+                          onClick={() => setReviewMode(false)}
+                          className="text-xs text-gray-400 hover:text-gray-600"
+                        >
+                          ✕ Exit
+                        </button>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                        <FlashcardDeck
+                          cards={savedCards}
+                          onReview={(cardId, correct) => reviewCard(cardId, correct)}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0 flex items-center gap-2">
+                        <p className="text-xs font-semibold text-gray-600 flex-1">Saved Cards</p>
+                        {savedCards.length > 0 && (
+                          <>
+                            <span className="text-xs text-gray-400">{savedCards.length}</span>
+                            <button
+                              onClick={() => setReviewMode(true)}
+                              className="text-xs font-medium text-primary-600 hover:text-primary-800"
+                            >
+                              Start Review →
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {savedCards.length > 0 ? (
+                        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+                          {savedCards.map(card => (
+                            <div
+                              key={card.id}
+                              className="text-xs text-gray-700 px-2 py-1.5 rounded-lg bg-gray-50 border border-gray-100 leading-snug"
+                            >
+                              {card.front}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 gap-2">
+                          <BookOpen className="h-5 w-5 text-gray-200" />
+                          <p className="text-xs text-gray-400 leading-relaxed">
+                            Answer a question and tap<br/>"Save as flashcard" to build<br/>your review deck.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
           </div>
-        </div>
+        )}
+
       </div>
     </div>
   );

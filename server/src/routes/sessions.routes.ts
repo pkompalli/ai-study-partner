@@ -6,7 +6,7 @@ import {
   requestQuiz, requestFlashcards, requestVideos, endSessionHandler,
   getSessionSummary, getResponsePills, regenerateMessage,
   getTopicBankCards, getTopicBankQuestions, reviewCard,
-  getCrossTopicCardsHandler,
+  getCrossTopicCardsHandler, saveCardFromQuestion,
 } from '../controllers/sessions.controller.js';
 
 const router = Router();
@@ -25,6 +25,7 @@ router.post('/:id/regenerate', requireAuth, llmLimiter, regenerateMessage);
 router.get('/:id/topic-cards', requireAuth, getTopicBankCards);
 router.get('/:id/topic-questions', requireAuth, getTopicBankQuestions);
 router.patch('/:id/card-review', requireAuth, reviewCard);
+router.post('/:id/save-card', requireAuth, saveCardFromQuestion);
 router.get('/:id/cross-topic-cards', requireAuth, getCrossTopicCardsHandler);
 
 export default router;

@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingIndicator } from './StreamingIndicator';
 import { RichMessageContent } from './RichMessageContent';
+import { useTypewriter } from '@/hooks/useTypewriter';
 import type { SessionMessage } from '@/types';
 
 interface ChatWindowProps {
@@ -21,10 +22,8 @@ export function ChatWindow({
   onRegenerate,
 }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  // Smooth character-by-character animation — decouples display from chunk arrival
+  const displayed = useTypewriter(isStreaming ? streamingContent : '');
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
@@ -33,7 +32,7 @@ export function ChatWindow({
       {visibleMessages.map((message, visibleIdx) => {
         const isAssistant = message.role === 'assistant';
         const isBeingRegenerated = regeneratingIndex === visibleIdx;
-        const currentDepth = message.depth ?? 0;
+        const currentDepth = message.depth ?? 3;
 
         // Regenerating in-place: plain text with cursor to avoid flicker
         if (isAssistant && isBeingRegenerated && isStreaming) {
@@ -42,10 +41,10 @@ export function ChatWindow({
               <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-bold flex-shrink-0 mt-1">
                 AI
               </div>
-              {streamingContent ? (
+              {displayed ? (
                 <div className="flex-1 min-w-0 rounded-2xl rounded-bl-md px-4 py-3 bg-white border border-gray-100 shadow-sm">
                   <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                    {streamingContent}
+                    {displayed}
                     <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
                   </div>
                 </div>
@@ -73,7 +72,7 @@ export function ChatWindow({
                 <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-white border border-gray-200 rounded-lg shadow-sm px-1.5 py-1">
                   <button
                     onClick={() => onRegenerate(visibleIdx, currentDepth - 1)}
-                    disabled={currentDepth === 0 || isStreaming}
+                    disabled={currentDepth <= 1 || isStreaming}
                     className="h-5 w-5 flex items-center justify-center text-gray-500 hover:text-gray-800 disabled:opacity-25 disabled:cursor-not-allowed rounded"
                     title="Less depth"
                   >
@@ -82,7 +81,7 @@ export function ChatWindow({
                   <span className="text-[11px] font-medium text-gray-500 w-3.5 text-center leading-none">{currentDepth}</span>
                   <button
                     onClick={() => onRegenerate(visibleIdx, currentDepth + 1)}
-                    disabled={currentDepth === 3 || isStreaming}
+                    disabled={currentDepth >= 5 || isStreaming}
                     className="h-5 w-5 flex items-center justify-center text-gray-500 hover:text-gray-800 disabled:opacity-25 disabled:cursor-not-allowed rounded"
                     title="More depth"
                   >
@@ -102,16 +101,16 @@ export function ChatWindow({
         );
       })}
 
-      {/* Streaming new message — plain text with cursor, no ReactMarkdown flicker */}
+      {/* Streaming new message — typewriter animation, no ReactMarkdown flicker */}
       {isStreaming && regeneratingIndex === null && (
         <div className="flex gap-2 justify-start">
           <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-bold flex-shrink-0 mt-1">
             AI
           </div>
-          {streamingContent ? (
+          {displayed ? (
             <div className="flex-1 min-w-0 rounded-2xl rounded-bl-md px-4 py-3 bg-white border border-gray-100 shadow-sm">
               <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                {streamingContent}
+                {displayed}
                 <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
               </div>
             </div>

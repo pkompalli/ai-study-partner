@@ -38,7 +38,7 @@ interface SessionState {
   fetchSummary: (sessionId: string, depth?: number) => Promise<void>;
   fetchPills: (sessionId: string) => Promise<void>;
   fetchTopicBank: (sessionId: string) => Promise<void>;
-  silentFetchFlashcards: (depth?: number) => Promise<void>;
+  saveCardFromQuestion: (question: string, answer: string, explanation: string) => Promise<Flashcard | null>;
   reviewCard: (cardId: string, correct: boolean) => Promise<void>;
   regenerateMessage: (visibleIndex: number, depth: number) => Promise<void>;
 }
@@ -128,7 +128,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                 role: 'assistant',
                 content: accumulated,
                 content_type: 'text',
-                depth: depth ?? 0,
+                depth: depth ?? 3,
               }],
               isStreaming: false,
               streamingContent: '',
@@ -261,8 +261,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
                 summaryStreaming: false,
                 summaryStreamingContent: '',
               });
-              // Auto-generate flashcards silently for the sidebar
-              get().silentFetchFlashcards(depth).catch(() => {});
             }
           } catch { /* ignore */ }
         }
@@ -289,33 +287,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   fetchTopicBank: async (sessionId) => {
     try {
-      const [cardsRes, crossRes] = await Promise.all([
-        api.get<{ cards: Flashcard[] }>(`/api/sessions/${sessionId}/topic-cards`),
-        api.get<{ cards: CrossTopicCard[] }>(`/api/sessions/${sessionId}/cross-topic-cards`),
-      ]);
-      const cards = cardsRes.data.cards ?? [];
-      const cross = crossRes.data.cards ?? [];
-
-      if (cards.length > 0) {
-        set({ activeFlashcards: { id: 'topic-bank', cards } });
-      }
-      if (cross.length > 0) {
-        set({ crossTopicCards: cross });
-      }
+      const { data } = await api.get<{ cards: Flashcard[] }>(`/api/sessions/${sessionId}/topic-cards`);
+      const cards = data.cards ?? [];
+      set({ activeFlashcards: { id: 'topic-bank', cards } });
     } catch { /* ignore — topic bank may be empty for new topics */ }
   },
 
-  silentFetchFlashcards: async (depth = 0) => {
+  saveCardFromQuestion: async (question, answer, explanation) => {
     const session = get().activeSession;
-    if (!session) return;
-    set({ flashcardsLoading: true });
+    if (!session) return null;
     try {
-      const { data } = await api.post<{ id: string; cards: Flashcard[] }>(
-        `/api/sessions/${session.id}/flashcards?silent=true&depth=${depth}`
+      const { data } = await api.post<{ card: Flashcard }>(
+        `/api/sessions/${session.id}/save-card`,
+        { question, answer, explanation },
       );
-      set({ activeFlashcards: data });
-    } catch { /* ignore */ } finally {
-      set({ flashcardsLoading: false });
+      const card = data.card;
+      // Append to deck immediately; deduplicate by id
+      set(state => {
+        const existing = state.activeFlashcards;
+        const cards = existing?.cards ?? [];
+        if (cards.some(c => c.id === card.id)) return {};
+        return { activeFlashcards: { id: existing?.id ?? 'topic-bank', cards: [...cards, card] } };
+      });
+      return card;
+    } catch {
+      return null;
     }
   },
 
