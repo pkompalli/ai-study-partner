@@ -6,6 +6,7 @@ import { buildSummaryProsePrompt, buildSummaryInteractivePrompt } from './prompt
  * Streams the topic summary prose via SSE, then generates starters and sends a done event.
  */
 export interface SummaryInteractiveResult {
+  summary: string;
   question: string;
   answerPills: string[];
   correctIndex: number;
@@ -41,10 +42,12 @@ export async function streamTopicSummarySSE(
   res.flushHeaders();
 
   // Stream the prose summary
+  let summaryAccumulated = '';
   for await (const chunk of chatCompletionStream([
     { role: 'system', content: prosePrompt },
     { role: 'user', content: 'Write the summary.' },
   ], { maxTokens: 1500 })) {
+    summaryAccumulated += chunk;
     res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk })}\n\n`);
   }
 
@@ -74,7 +77,8 @@ export async function streamTopicSummarySSE(
     starters = Array.isArray(parsed.starters) ? parsed.starters : [];
   } catch { /* fields remain empty */ }
 
-  res.write(`data: ${JSON.stringify({ type: 'done', question, answerPills, correctIndex, explanation, starters })}\n\n`);
+  const effectiveDepth = Math.max(1, Math.min(5, params.depth ?? 1));
+  res.write(`data: ${JSON.stringify({ type: 'done', depth: effectiveDepth, question, answerPills, correctIndex, explanation, starters })}\n\n`);
   res.end();
-  return { question, answerPills, correctIndex, explanation, starters };
+  return { summary: summaryAccumulated, question, answerPills, correctIndex, explanation, starters };
 }

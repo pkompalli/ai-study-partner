@@ -21,6 +21,7 @@ interface SessionState {
   topicSummary: { summary: string; question: string; answerPills: string[]; correctIndex: number; explanation: string; starters: string[] } | null;
   summaryStreaming: boolean;
   summaryStreamingContent: string;
+  summaryDepth: number;
   responsePills: { question: string; answerPills: string[]; correctIndex: number; explanation: string; followupPills: string[] } | null;
   pillsLoading: boolean;
   flashcardsLoading: boolean;
@@ -55,6 +56,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   topicSummary: null,
   summaryStreaming: false,
   summaryStreamingContent: '',
+  summaryDepth: 1,
   responsePills: null,
   pillsLoading: false,
   flashcardsLoading: false,
@@ -211,6 +213,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       topicSummary: null,
       summaryStreaming: false,
       summaryStreamingContent: '',
+      summaryDepth: 1,
       responsePills: null,
       pillsLoading: false,
       flashcardsLoading: false,
@@ -219,6 +222,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   fetchSummary: async (sessionId, depth = 0) => {
+    // Optimistic label update — if user explicitly picked a depth, show it immediately
+    if (depth > 0) {
+      set({ summaryDepth: depth });
+    }
     set({ summaryStreaming: true, summaryStreamingContent: '', topicSummary: null });
 
     try {
@@ -250,6 +257,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               set({ summaryStreamingContent: accumulated });
             } else if (json.type === 'done') {
               set({
+                summaryDepth: typeof json.depth === 'number' ? json.depth : (depth || 1),
                 topicSummary: {
                   summary: accumulated,
                   question: json.question ?? '',

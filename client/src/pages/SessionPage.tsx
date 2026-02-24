@@ -302,7 +302,7 @@ export function SessionPage() {
   const {
     activeSession, messages, isStreaming, streamingContent, regeneratingIndex,
     activeFlashcards,
-    topicSummary, summaryStreaming, summaryStreamingContent,
+    topicSummary, summaryStreaming, summaryStreamingContent, summaryDepth,
     responsePills, pillsLoading,
     loadSession, sendMessage, clearSession,
     fetchSummary, regenerateMessage, reviewCard, saveCardFromQuestion,
@@ -320,7 +320,6 @@ export function SessionPage() {
   } = useExamStore();
 
   const [loading, setLoading] = useState(true);
-  const [summaryDepth, setSummaryDepth] = useState(3);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [centerTab, setCenterTab] = useState<'study' | 'exam'>('study');
   const [examTabInitialized, setExamTabInitialized] = useState(false);
@@ -425,10 +424,9 @@ export function SessionPage() {
     await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.topic_id);
   };
 
-  const handleSummaryDepthChange = async (newDepth: number) => {
+  const handleSummaryDepthChange = (newDepth: number) => {
     if (!id) return;
     const clamped = Math.max(1, Math.min(5, newDepth));
-    setSummaryDepth(clamped);
     fetchSummary(id, clamped);
   };
 

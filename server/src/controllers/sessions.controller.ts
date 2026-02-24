@@ -3,6 +3,7 @@ import {
   createSession, getSession, getSessionMessages, saveMessage,
   endSession, listSessions, saveQuiz, submitQuizAnswers, saveFlashcardSet,
   upsertTopicProgress,
+  getCachedSummary, getLastCachedDepth, saveSummaryCache,
 } from '../db/sessions.db.js';
 import { saveArtifact } from '../db/artifacts.db.js';
 import { getTopicName, getChapterName, getCourseContext } from '../db/courses.db.js';
@@ -187,14 +188,46 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
   try {
     const userId = req.user!.id;
     const sessionId = req.params['id'] as string;
-    const depth = parseInt((req.query['depth'] as string) ?? '0', 10) || 0;
+    const rawDepth = parseInt((req.query['depth'] as string) ?? '0', 10) || 0;
 
     const session = getSession(sessionId, userId);
-    const courseCtx = getCourseContext(session['course_id'] as string);
+    const topicId = session['topic_id'] as string | undefined;
 
+    // Determine effective depth:
+    // depth=0 means "restore last viewed depth for this topic, or default to 1"
+    let depth: number;
+    if (rawDepth === 0 && topicId) {
+      depth = getLastCachedDepth(userId, topicId) ?? 1;
+    } else {
+      depth = Math.max(1, Math.min(5, rawDepth || 1));
+    }
+
+    // Serve from cache if available
+    if (topicId) {
+      const cached = getCachedSummary(userId, topicId, depth);
+      if (cached) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders();
+        res.write(`data: ${JSON.stringify({ type: 'chunk', content: cached.summary })}\n\n`);
+        res.write(`data: ${JSON.stringify({
+          type: 'done', depth,
+          question: cached.question,
+          answerPills: cached.answer_pills,
+          correctIndex: cached.correct_index,
+          explanation: cached.explanation,
+          starters: cached.starters,
+        })}\n\n`);
+        res.end();
+        return;
+      }
+    }
+
+    // Cache miss — generate via LLM
+    const courseCtx = getCourseContext(session['course_id'] as string);
     let topicName = 'General';
     let chapterName: string | undefined;
-
     if (session['topic_id']) {
       topicName = getTopicName(session['topic_id'] as string) ?? 'General';
     }
@@ -202,7 +235,7 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
       chapterName = getChapterName(session['chapter_id'] as string);
     }
 
-    await streamTopicSummarySSE(res, {
+    const result = await streamTopicSummarySSE(res, {
       courseName: courseCtx?.name ?? 'Course',
       topicName,
       chapterName,
@@ -211,6 +244,18 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
       goal: courseCtx?.goal,
       depth,
     });
+
+    // Persist to cache (response is already sent)
+    if (topicId) {
+      saveSummaryCache(userId, topicId, depth, {
+        summary: result.summary,
+        question: result.question,
+        answer_pills: result.answerPills,
+        correct_index: result.correctIndex,
+        explanation: result.explanation,
+        starters: result.starters,
+      });
+    }
   } catch (err) {
     next(err);
   }

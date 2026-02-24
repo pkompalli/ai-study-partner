@@ -141,3 +141,72 @@ export function upsertTopicProgress(
     `).run(randomUUID(), userId, topicId, courseId, status, new Date().toISOString());
   }
 }
+
+// ─── Topic summary cache ──────────────────────────────────────────────────────
+
+export interface CachedSummary {
+  depth: number;
+  summary: string;
+  question: string;
+  answer_pills: string[];
+  correct_index: number;
+  explanation: string;
+  starters: string[];
+}
+
+export function getCachedSummary(userId: string, topicId: string, depth: number): CachedSummary | null {
+  const row = db.prepare(
+    'SELECT * FROM topic_summaries WHERE topic_id = ? AND user_id = ? AND depth = ?'
+  ).get(topicId, userId, depth) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    depth: row['depth'] as number,
+    summary: row['summary'] as string,
+    question: row['question'] as string,
+    answer_pills: JSON.parse(row['answer_pills'] as string),
+    correct_index: row['correct_index'] as number,
+    explanation: row['explanation'] as string,
+    starters: JSON.parse(row['starters'] as string),
+  };
+}
+
+export function getLastCachedDepth(userId: string, topicId: string): number | null {
+  const row = db.prepare(
+    'SELECT depth FROM topic_summaries WHERE topic_id = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1'
+  ).get(topicId, userId) as { depth: number } | undefined;
+  return row?.depth ?? null;
+}
+
+export function saveSummaryCache(
+  userId: string,
+  topicId: string,
+  depth: number,
+  data: {
+    summary: string;
+    question: string;
+    answer_pills: string[];
+    correct_index: number;
+    explanation: string;
+    starters: string[];
+  },
+): void {
+  db.prepare(`
+    INSERT INTO topic_summaries (topic_id, user_id, depth, summary, question, answer_pills, correct_index, explanation, starters, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(topic_id, user_id, depth) DO UPDATE SET
+      summary = excluded.summary,
+      question = excluded.question,
+      answer_pills = excluded.answer_pills,
+      correct_index = excluded.correct_index,
+      explanation = excluded.explanation,
+      starters = excluded.starters,
+      updated_at = excluded.updated_at
+  `).run(
+    topicId, userId, depth,
+    data.summary, data.question,
+    JSON.stringify(data.answer_pills),
+    data.correct_index,
+    data.explanation,
+    JSON.stringify(data.starters),
+  );
+}

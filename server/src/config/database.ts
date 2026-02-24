@@ -238,6 +238,23 @@ addCol('topic_cards', 'times_correct',   'INTEGER NOT NULL DEFAULT 0');
 addCol('topic_cards', 'next_review_at',  'TEXT');
 addCol('topic_cards', 'last_reviewed_at','TEXT');
 
+// Topic summary cache — persists summaries per (topic, user, depth)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS topic_summaries (
+    topic_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    depth INTEGER NOT NULL,
+    summary TEXT NOT NULL,
+    question TEXT NOT NULL DEFAULT '',
+    answer_pills TEXT NOT NULL DEFAULT '[]',
+    correct_index INTEGER NOT NULL DEFAULT -1,
+    explanation TEXT NOT NULL DEFAULT '',
+    starters TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (topic_id, user_id, depth)
+  )
+`);
+
 // Ensure dev user exists (used when auth is bypassed in dev mode)
 db.prepare(`
   INSERT OR IGNORE INTO users (id, email, name, password_hash)
