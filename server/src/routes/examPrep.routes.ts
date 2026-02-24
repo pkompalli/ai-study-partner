@@ -1,28 +1,41 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
 import { llmLimiter } from '../middleware/rateLimiter.js';
 import {
-  listFormats, createFormat, getFormat, patchFormat, removeFormat,
+  listFormats, createFormat, getFormat, patchFormat, putFormat, removeFormat,
   inferFormat,
   generateQuestions, listQuestions, clearQuestions,
+  generateBatchHandler, markStandaloneHandler,
   startAttempt, getAttemptHandler, submitAnswerHandler, getHintHandler, submitAttemptHandler,
   getReadiness,
+  extractPaperHandler, importExtractedHandler,
 } from '../controllers/examPrep.controller.js';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const router = Router();
 
 // Exam formats
-router.get('/formats',             requireAuth, listFormats);
-router.post('/formats',            requireAuth, createFormat);
-router.post('/formats/infer',      requireAuth, llmLimiter, inferFormat);
-router.get('/formats/:id',         requireAuth, getFormat);
-router.patch('/formats/:id',       requireAuth, patchFormat);
-router.delete('/formats/:id',      requireAuth, removeFormat);
+router.get('/formats',                    requireAuth, listFormats);
+router.post('/formats',                   requireAuth, createFormat);
+router.post('/formats/infer',             requireAuth, llmLimiter, inferFormat);
+router.post('/formats/extract-paper',     requireAuth, llmLimiter, upload.array('files', 30), extractPaperHandler);
+router.post('/formats/import-questions',  requireAuth, importExtractedHandler);
+router.get('/formats/:id',                requireAuth, getFormat);
+router.patch('/formats/:id',              requireAuth, patchFormat);
+router.put('/formats/:id',                requireAuth, putFormat);
+router.delete('/formats/:id',             requireAuth, removeFormat);
 
 // Questions
-router.post('/formats/:id/questions',   requireAuth, llmLimiter, generateQuestions);
-router.get('/formats/:id/questions',    requireAuth, listQuestions);
-router.delete('/formats/:id/questions', requireAuth, clearQuestions);
+router.post('/formats/:id/questions',        requireAuth, llmLimiter, generateQuestions);
+router.post('/formats/:id/questions/batch',  requireAuth, llmLimiter, generateBatchHandler);
+router.get('/formats/:id/questions',         requireAuth, listQuestions);
+router.delete('/formats/:id/questions',      requireAuth, clearQuestions);
+
+// Standalone marking (session tab — no attempt required)
+// accepts optional image/PDF uploads (student's handwritten answer)
+router.post('/mark', requireAuth, llmLimiter, upload.array('files', 10), markStandaloneHandler);
 
 // Attempts
 router.post('/attempts',           requireAuth, startAttempt);

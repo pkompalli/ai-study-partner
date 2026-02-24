@@ -1,5 +1,65 @@
 import type { MarkCriterion } from '../../db/examBank.db.js';
 
+// ─── Paper extraction ──────────────────────────────────────────────────────────
+
+export function buildPaperExtractionPrompt(paperText: string): string {
+  return `You are an expert examiner analysing a past exam paper or worksheet. Extract the complete question bank from the text below.
+
+Return ONLY valid JSON — no markdown, no code fences:
+{
+  "name": "Exam / worksheet title",
+  "total_marks": 100,
+  "time_minutes": 120,
+  "instructions": "General instructions to candidates (if present, else null)",
+  "sections": [
+    {
+      "name": "Section A — Multiple Choice",
+      "question_type": "mcq",
+      "num_questions": 30,
+      "marks_per_question": 1,
+      "instructions": "Answer all questions (if present, else null)"
+    }
+  ],
+  "questions": [
+    {
+      "section_index": 0,
+      "question_text": "Full verbatim question text",
+      "dataset": null,
+      "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+      "correct_option_index": 2,
+      "max_marks": 1,
+      "mark_scheme": [{ "label": "Correct answer", "marks": 1 }]
+    }
+  ],
+  "questions_truncated": false
+}
+
+Rules for sections:
+- question_type must be: mcq, short_answer, long_answer, data_analysis, calculation
+- Infer question_type from the section heading and question style
+- num_questions = actual count of questions you extracted for that section
+
+Rules for questions:
+- Extract questions in order, grouped by section (section_index is 0-based index into sections array)
+- question_text: copy verbatim including all sub-parts (a), (b), etc. combined into one text
+- dataset: for data_analysis questions, copy the table or scenario text; null for all others
+- options: array of 4 strings for MCQ only; null for all other types
+- correct_option_index: 0-3 if an answer key is present; null if not
+- max_marks: marks shown next to the question (e.g. [3] or (3 marks))
+- mark_scheme: generate a plausible mark scheme based on the question if no answer scheme is provided:
+  - For MCQ: [{"label": "Correct answer", "marks": 1}]
+  - For short/calculation: break marks into logical criteria (method, substitution, answer, units)
+  - For long answer: break into assessment objectives (Knowledge, Application, Analysis)
+- questions_truncated: set to true if you could not extract ALL questions due to length
+
+Extract every question you can identify. If the paper is very long, extract as many as possible in order.
+
+Paper text:
+---
+${paperText.slice(0, 20000)}
+---`;
+}
+
 // ─── Format inference ──────────────────────────────────────────────────────────
 
 export function buildExamFormatInferPrompt(examName: string, courseName: string): string {
@@ -55,6 +115,14 @@ Return JSON fields: question_text, dataset (markdown table or scenario text), ma
 Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — include Method (1), Substitution (1), Answer with units (1+) criteria`,
 };
 
+const DIFFICULTY_LABELS: Record<number, string> = {
+  1: 'Easy — guided and scaffolded, tests basic recall and simple one-step application',
+  2: 'Medium-Easy — straightforward application, accessible one or two-step problems',
+  3: 'Standard — typical exam-level question requiring genuine understanding and application',
+  4: 'Hard — multi-step, requires analysis, synthesis, or evaluation across concepts',
+  5: 'Stretch — challenging beyond standard exam level, requires deep insight or novel application',
+};
+
 export function buildExamQuestionPrompt(params: {
   sectionName: string;
   questionType: string;
@@ -65,6 +133,7 @@ export function buildExamQuestionPrompt(params: {
   examName?: string;
   levelLabel: string;
   existingQuestions?: string[];
+  difficulty?: number;
 }): string {
   const typeInstructions = QUESTION_TYPE_INSTRUCTIONS[params.questionType]
     ?? QUESTION_TYPE_INSTRUCTIONS.short_answer;
@@ -73,22 +142,28 @@ export function buildExamQuestionPrompt(params: {
     ? `\n\nDo NOT repeat or closely paraphrase these already-generated questions:\n${params.existingQuestions.slice(0, 6).map(q => `- "${q}"`).join('\n')}`
     : '';
 
+  const difficultyLine = params.difficulty !== undefined
+    ? `\nDifficulty: ${DIFFICULTY_LABELS[params.difficulty] ?? DIFFICULTY_LABELS[3]}`
+    : '';
+
   return `You are an expert ${params.examName ? `${params.examName} ` : ''}question setter generating a single exam question for a ${params.levelLabel} student.
 
 Course: "${params.courseName}"
 Topic: "${params.topicName}"${params.subjectName ? `\nSubject: "${params.subjectName}"` : ''}
 Section: "${params.sectionName}"
 Question type: ${params.questionType.replace('_', ' ')}
-Marks available: ${params.marksForQuestion}${avoidBlock}
+Marks available: ${params.marksForQuestion}${difficultyLine}${avoidBlock}
 
 ${typeInstructions}
 
 Quality requirements:
 - Test genuine understanding — mechanism, application, analysis, evaluation, or synthesis (NOT surface recall or definition repetition)
 - Mark scheme must be specific, unambiguous, and examinable — each criterion must be directly observable in the student's written answer
-- Difficulty calibrated to ${params.levelLabel} level — challenging but fair
+- Difficulty calibrated precisely to the specified difficulty level above
 - For calculation questions: include every piece of data the student needs; state units
 - For data analysis: dataset must have ≥4 data points; question must require processing the data (not just reading it off)
+
+Notation: use LaTeX for all math and chemistry — inline math $...$, display math $$...$$, chemical formulas/equations \ce{...} (e.g. \ce{H2SO4}, \ce{Ca^{2+}}, \ce{2H2 + O2 -> 2H2O}).
 
 Return ONLY valid JSON — no markdown, no code fences:
 {

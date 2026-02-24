@@ -1,3 +1,4 @@
+import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
 import { chatCompletion } from './client.js';
 import { buildMarkingPrompt, buildHintPrompt } from './examPrompts.js';
 import type { MarkCriterion } from '../../db/examBank.db.js';
@@ -17,6 +18,8 @@ export async function markAnswer(params: {
   // MCQ-specific: skip LLM if type is mcq
   correctOptionIndex?: number;
   selectedOptionIndex?: number;
+  // Vision: images uploaded by student as their written answer
+  images?: { base64: string; mimeType: string }[];
 }): Promise<MarkResult> {
   // MCQ: no LLM needed — just compare indices
   if (params.questionType === 'mcq') {
@@ -39,8 +42,19 @@ export async function markAnswer(params: {
     studentAnswer: params.studentAnswer,
   });
 
+  // Build message content — include uploaded images if present
+  const messageContent: string | ChatCompletionContentPart[] = params.images?.length
+    ? [
+        { type: 'text', text: prompt },
+        ...params.images.map(img => ({
+          type: 'image_url' as const,
+          image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' as const },
+        })),
+      ]
+    : prompt;
+
   const raw = await chatCompletion(
-    [{ role: 'user', content: prompt }],
+    [{ role: 'user', content: messageContent }],
     { temperature: 0.2, maxTokens: 800 },
   );
 

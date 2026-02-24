@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { CourseInputStep } from '@/components/onboarding/CourseInputStep';
 import { GoalStep } from '@/components/onboarding/GoalStep';
 import { StructurePreviewStep } from '@/components/onboarding/StructurePreviewStep';
+import { ExamFormatSetupStep } from '@/components/onboarding/ExamFormatSetupStep';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
 import { Spinner } from '@/components/ui/Spinner';
 import api from '@/lib/api';
 import type { Subject } from '@/types';
 
-type Step = 'input' | 'goal' | 'extracting' | 'preview';
+type Step = 'input' | 'goal' | 'extracting' | 'preview' | 'examFormat';
 
 interface InputData {
   sourceType: string;
@@ -29,12 +30,13 @@ interface ExtractedData {
   sourceFileUrl?: string;
 }
 
-const STEP_LABELS = ['Content', 'Goal', 'Review'];
+const STEP_LABELS = ['Content', 'Goal', 'Review', 'Exam Format'];
 
 export function OnboardingPage() {
   const [step, setStep] = useState<Step>('input');
   const [saving, setSaving] = useState(false);
   const [extracted, setExtracted] = useState<ExtractedData | null>(null);
+  const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
 
   // Use refs to avoid stale closure issues
   const inputDataRef = useRef<InputData>({ sourceType: 'text' });
@@ -44,7 +46,7 @@ export function OnboardingPage() {
   const addToast = useUIStore(s => s.addToast);
   const navigate = useNavigate();
 
-  const stepIndex = step === 'input' ? 0 : step === 'goal' ? 1 : step === 'extracting' ? 1 : 2;
+  const stepIndex = step === 'input' ? 0 : step === 'goal' || step === 'extracting' ? 1 : step === 'preview' ? 2 : 3;
 
   const handleInput = (data: InputData) => {
     inputDataRef.current = data;
@@ -109,10 +111,15 @@ export function OnboardingPage() {
         rawInput,
         structure,
       });
-      // Fetch the full course to set it as active — sidebar will auto-expand it
       await fetchCourse(courseId);
-      addToast('Course created successfully!', 'success');
-      navigate('/dashboard');
+
+      if (goal === 'exam_prep') {
+        setCreatedCourseId(courseId);
+        setStep('examFormat');
+      } else {
+        addToast('Course created successfully!', 'success');
+        navigate('/dashboard');
+      }
     } catch (err) {
       console.error('[OnboardingPage] createCourse error:', err);
       addToast('Failed to save course. Please try again.', 'error');
@@ -154,6 +161,20 @@ export function OnboardingPage() {
           structure={extracted.structure}
           onConfirm={handleConfirm}
           loading={saving}
+        />
+      )}
+      {step === 'examFormat' && createdCourseId && (
+        <ExamFormatSetupStep
+          courseId={createdCourseId}
+          examName={goalDataRef.current.examName}
+          onComplete={() => {
+            addToast('Course and exam format ready!', 'success');
+            navigate('/dashboard');
+          }}
+          onSkip={() => {
+            addToast('Course created! Set up exam format later in settings.', 'success');
+            navigate('/dashboard');
+          }}
         />
       )}
     </div>

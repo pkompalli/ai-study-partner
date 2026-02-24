@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { saveCourse, getCourseWithTree, listCourses, deleteCourse, updateCourse as updateCourseInDb } from '../db/courses.db.js';
+import { saveCourse, getCourseWithTree, listCourses, deleteCourse, updateCourse as updateCourseInDb, replaceStructure } from '../db/courses.db.js';
 import { getTopicProgressForCourse } from '../db/sessions.db.js';
 import {
   extractCourseFromText,
@@ -96,6 +96,17 @@ export async function updateCourse(req: Request, res: Response, next: NextFuncti
   } catch (err) {
     next(err);
   }
+}
+
+export async function replaceStructureHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { subjects } = req.body as {
+      subjects: Array<{ id?: string; name: string; topics: Array<{ id?: string; name: string }> }>;
+    };
+    replaceStructure(req.params['id'] as string, req.user!.id, subjects ?? []);
+    const course = getCourseWithTree(req.params['id'] as string, req.user!.id);
+    res.json(course);
+  } catch (err) { next(err); }
 }
 
 export async function removeCourse(req: Request, res: Response, next: NextFunction) {

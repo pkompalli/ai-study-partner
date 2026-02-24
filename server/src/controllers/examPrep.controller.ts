@@ -1,12 +1,13 @@
 import type { Request, Response, NextFunction } from 'express';
 import {
-  createExamFormat, getExamFormat, getExamFormatsForCourse, updateExamFormat, deleteExamFormat,
-  saveExamQuestions, deleteExamQuestions, getExamQuestions,
+  createExamFormat, getExamFormat, getExamFormatsForCourse, updateExamFormat, replaceSections, deleteExamFormat,
+  saveExamQuestions, deleteExamQuestions, getExamQuestions, getExamQuestionById,
   createAttempt, getAttempt, upsertAnswer, markAnswer as markAnswerDb,
   submitAttempt, getTopicReadinessForCourse,
 } from '../db/examBank.db.js';
 import { getCourseContext, getCourseWithTree } from '../db/courses.db.js';
-import { inferExamFormat, generateExamQuestions } from '../services/llm/examQuestionGenerator.js';
+import { inferExamFormat, generateExamQuestions, extractExamFromPaper, extractTextFromPDF } from '../services/llm/examQuestionGenerator.js';
+import type { ExtractedQuestion, ExtractedSection } from '../services/llm/examQuestionGenerator.js';
 import { markAnswer, getHint } from '../services/llm/examMarker.js';
 
 // ─── Format CRUD ───────────────────────────────────────────────────────────────
@@ -59,6 +60,36 @@ export async function patchFormat(req: Request, res: Response, next: NextFunctio
   try {
     updateExamFormat(req.params['id'] as string, req.user!.id, req.body as Record<string, unknown>);
     const format = getExamFormat(req.params['id'] as string, req.user!.id);
+    res.json(format);
+  } catch (err) { next(err); }
+}
+
+export async function putFormat(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.id;
+    const formatId = req.params['id'] as string;
+    const { sections, ...meta } = req.body as {
+      name?: string;
+      description?: string;
+      total_marks?: number;
+      time_minutes?: number;
+      instructions?: string;
+      sections?: Array<{
+        name: string;
+        question_type: string;
+        num_questions: number;
+        marks_per_question?: number;
+        total_marks?: number;
+        instructions?: string;
+      }>;
+    };
+
+    updateExamFormat(formatId, userId, meta);
+    if (sections && sections.length > 0) {
+      replaceSections(formatId, userId, sections);
+    }
+    const format = getExamFormat(formatId, userId);
+    if (!format) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(format);
   } catch (err) { next(err); }
 }
@@ -313,5 +344,185 @@ export async function getReadiness(req: Request, res: Response, next: NextFuncti
     const courseId = req.params['id'] as string;
     const readiness = getTopicReadinessForCourse(userId, courseId);
     res.json(readiness);
+  } catch (err) { next(err); }
+}
+
+// ─── Batch question generation ────────────────────────────────────────────────
+
+export async function generateBatchHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.id;
+    const formatId = req.params['id'] as string;
+    const { count = 5, difficulty = 3, topicId } = req.body as { count?: number; difficulty?: number; topicId?: string };
+
+    const format = getExamFormat(formatId, userId);
+    if (!format) { res.status(404).json({ error: 'Format not found' }); return; }
+
+    const ctx = getCourseContext(format.course_id);
+    const courseTree = getCourseWithTree(format.course_id, userId);
+    const allTopics: Array<{ id: string; name: string; subjectName?: string }> = [];
+    for (const subject of (courseTree['subjects'] as Array<{ name: string; topics: Array<{ id: string; name: string }> }> ?? [])) {
+      for (const topic of subject.topics ?? []) {
+        allTopics.push({ id: topic.id, name: topic.name, subjectName: subject.name });
+      }
+    }
+
+    if (allTopics.length === 0) { res.status(400).json({ error: 'Course has no topics' }); return; }
+
+    // Filter to the session's current topic if provided; fall back to all topics
+    const matchedTopics = topicId ? allTopics.filter(t => t.id === topicId) : [];
+    const topics = matchedTopics.length > 0 ? matchedTopics : allTopics;
+
+    const generated = await generateExamQuestions({
+      sections: format.sections,
+      topics,
+      courseName: ctx?.name ?? 'Course',
+      examName: format.name,
+      yearOfStudy: ctx?.yearOfStudy,
+      batchCount: Math.min(count, 20),
+      difficulty: Math.max(1, Math.min(5, difficulty)),
+    });
+
+    if (generated.length === 0) { res.status(500).json({ error: 'Failed to generate questions' }); return; }
+
+    // Append to bank (don't clear existing questions)
+    saveExamQuestions(formatId, format.course_id, generated);
+    res.json({ count: generated.length, questions: generated });
+  } catch (err) { next(err); }
+}
+
+// ─── Standalone answer marking (no attempt required) ─────────────────────────
+
+export async function markStandaloneHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { questionId, answerText } = req.body as { questionId: string; answerText?: string };
+    // selectedOptionIndex may arrive as a string in multipart form
+    const selectedOptionIndex = req.body.selectedOptionIndex !== undefined
+      ? Number(req.body.selectedOptionIndex)
+      : undefined;
+
+    const files = req.files as Express.Multer.File[] | undefined;
+
+    const question = getExamQuestionById(questionId);
+    if (!question) { res.status(404).json({ error: 'Question not found' }); return; }
+
+    const isMcq = question.section_question_type === 'mcq';
+
+    // Collect uploaded images and PDF text for written answers
+    let images: { base64: string; mimeType: string }[] | undefined;
+    let pdfTextAppend = '';
+
+    if (!isMcq && files?.length) {
+      const imgFiles = files.filter(f => f.mimetype.startsWith('image/'));
+      const pdfFiles = files.filter(f => f.mimetype === 'application/pdf');
+
+      if (imgFiles.length > 0) {
+        images = imgFiles.map(f => ({ base64: f.buffer.toString('base64'), mimeType: f.mimetype }));
+      }
+      for (const pdfFile of pdfFiles) {
+        try {
+          const text = await extractTextFromPDF(pdfFile.buffer);
+          if (text.trim()) pdfTextAppend += (pdfTextAppend ? '\n' : '') + text;
+        } catch { /* ignore extraction errors */ }
+      }
+    }
+
+    const studentAnswer = isMcq
+      ? (question.options?.[selectedOptionIndex ?? -1] ?? answerText ?? '')
+      : ((answerText ?? '') + (pdfTextAppend ? `\n\n[Uploaded document content:]\n${pdfTextAppend}` : ''));
+
+    const result = await markAnswer({
+      questionText: question.question_text,
+      questionType: question.section_question_type,
+      dataset: question.dataset,
+      markScheme: question.mark_scheme,
+      maxMarks: question.max_marks,
+      studentAnswer,
+      correctOptionIndex: question.correct_option_index,
+      selectedOptionIndex,
+      images,
+    });
+
+    res.json({ score: result.score, maxMarks: question.max_marks, feedback: result.feedback });
+  } catch (err) { next(err); }
+}
+
+// ─── Paper extraction ─────────────────────────────────────────────────────────
+
+export async function extractPaperHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const files = req.files as Express.Multer.File[] | undefined;
+    const file = req.file as Express.Multer.File | undefined;
+
+    let source: Parameters<typeof extractExamFromPaper>[0];
+
+    if (file) {
+      if (file.mimetype === 'application/pdf') {
+        source = { type: 'pdf', buffer: file.buffer };
+      } else {
+        source = { type: 'images', images: [{ base64: file.buffer.toString('base64'), mimeType: file.mimetype }] };
+      }
+    } else if (files && files.length > 0) {
+      const pdfs = files.filter(f => f.mimetype === 'application/pdf');
+      if (pdfs.length > 0) {
+        // Use first PDF if a PDF is in the batch
+        source = { type: 'pdf', buffer: pdfs[0].buffer };
+      } else {
+        source = {
+          type: 'images',
+          images: files.map(f => ({ base64: f.buffer.toString('base64'), mimeType: f.mimetype })),
+        };
+      }
+    } else {
+      res.status(400).json({ error: 'No file uploaded' });
+      return;
+    }
+
+    const result = await extractExamFromPaper(source);
+    res.json(result);
+  } catch (err) { next(err); }
+}
+
+export async function importExtractedHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user!.id;
+    const { courseId, name, total_marks, time_minutes, instructions, sections, questions } = req.body as {
+      courseId: string;
+      name: string;
+      total_marks?: number;
+      time_minutes?: number;
+      instructions?: string;
+      sections: ExtractedSection[];
+      questions: ExtractedQuestion[];
+    };
+
+    if (!courseId || !name || !Array.isArray(sections) || sections.length === 0) {
+      res.status(400).json({ error: 'courseId, name, and sections required' });
+      return;
+    }
+
+    const formatId = createExamFormat(userId, courseId, {
+      name,
+      total_marks,
+      time_minutes,
+      instructions,
+      sections: sections.map(s => ({
+        name: s.name,
+        question_type: s.question_type,
+        num_questions: s.num_questions,
+        marks_per_question: s.marks_per_question,
+        instructions: s.instructions,
+      })),
+    });
+
+    const format = getExamFormat(formatId, userId)!;
+
+    // NOTE: We intentionally do NOT save the extracted paper questions verbatim.
+    // The paper is used only to define the exam format/structure.
+    // Fresh questions are generated on demand when the user opens the Exam Prep tab.
+    // This prevents students from simply re-practicing the exact source paper.
+
+    const result = getExamFormat(formatId, userId);
+    res.status(201).json(result);
   } catch (err) { next(err); }
 }

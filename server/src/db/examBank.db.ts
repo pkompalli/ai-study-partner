@@ -208,6 +208,37 @@ export function updateExamFormat(
   db.prepare(`UPDATE exam_formats SET ${setClauses} WHERE id = ? AND user_id = ?`).run(...values);
 }
 
+export function replaceSections(
+  formatId: string,
+  userId: string,
+  sections: Array<{
+    name: string;
+    question_type: string;
+    num_questions: number;
+    marks_per_question?: number;
+    total_marks?: number;
+    instructions?: string;
+  }>,
+): void {
+  const owns = db.prepare('SELECT id FROM exam_formats WHERE id = ? AND user_id = ?').get(formatId, userId);
+  if (!owns) throw new Error('Format not found');
+
+  const insert = db.prepare(`
+    INSERT INTO exam_sections (id, exam_format_id, name, question_type, num_questions, marks_per_question, total_marks, instructions, sort_order)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  db.transaction(() => {
+    db.prepare('DELETE FROM exam_sections WHERE exam_format_id = ?').run(formatId);
+    sections.forEach((s, idx) => {
+      insert.run(
+        randomUUID(), formatId, s.name, s.question_type, s.num_questions,
+        s.marks_per_question ?? null, s.total_marks ?? null, s.instructions ?? null, idx,
+      );
+    });
+  })();
+}
+
 export function deleteExamFormat(formatId: string, userId: string): void {
   db.prepare('DELETE FROM exam_formats WHERE id = ? AND user_id = ?').run(formatId, userId);
 }
@@ -254,6 +285,39 @@ export function saveExamQuestions(
 
 export function deleteExamQuestions(formatId: string): void {
   db.prepare('DELETE FROM exam_questions WHERE exam_format_id = ?').run(formatId);
+}
+
+export function getExamQuestionById(questionId: string): ExamQuestion | null {
+  const r = db.prepare(`
+    SELECT q.id, q.exam_format_id, q.section_id, q.topic_id, q.course_id,
+           q.question_text, q.dataset, q.options, q.correct_option_index,
+           q.max_marks, q.mark_scheme, q.depth,
+           s.name AS section_name, s.question_type AS section_question_type,
+           t.name AS topic_name
+    FROM exam_questions q
+    JOIN exam_sections s ON q.section_id = s.id
+    LEFT JOIN topics t ON q.topic_id = t.id
+    WHERE q.id = ?
+  `).get(questionId) as Record<string, unknown> | undefined;
+
+  if (!r) return null;
+  return {
+    id: r['id'] as string,
+    exam_format_id: r['exam_format_id'] as string,
+    section_id: r['section_id'] as string,
+    section_name: r['section_name'] as string,
+    section_question_type: r['section_question_type'] as string,
+    topic_id: r['topic_id'] as string | undefined,
+    topic_name: r['topic_name'] as string | undefined,
+    course_id: r['course_id'] as string,
+    question_text: r['question_text'] as string,
+    dataset: r['dataset'] as string | undefined,
+    options: r['options'] ? JSON.parse(r['options'] as string) as string[] : undefined,
+    correct_option_index: r['correct_option_index'] as number | undefined,
+    max_marks: r['max_marks'] as number,
+    mark_scheme: JSON.parse(r['mark_scheme'] as string) as MarkCriterion[],
+    depth: r['depth'] as number,
+  };
 }
 
 export function getExamQuestions(formatId: string, sectionId?: string): ExamQuestion[] {

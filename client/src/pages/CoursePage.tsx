@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, GraduationCap, BookOpen, ClipboardList } from 'lucide-react';
+import { ArrowLeft, GraduationCap, BookOpen, Settings } from 'lucide-react';
 import { useCourseStore } from '@/store/courseStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useUIStore } from '@/store/uiStore';
@@ -69,15 +69,13 @@ export function CoursePage() {
               )}
             </div>
           </div>
-          {activeCourse.goal === 'exam_prep' && (
-            <button
-              onClick={() => navigate(`/courses/${id}/exam-prep`)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary-50 text-primary-700 text-sm font-medium hover:bg-primary-100 transition-colors flex-shrink-0"
-            >
-              <ClipboardList className="h-4 w-4" />
-              Exam Prep
-            </button>
-          )}
+          <button
+            onClick={() => navigate(`/courses/${id}/settings`)}
+            className="p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+            title="Course settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
         </div>
       </div>
 

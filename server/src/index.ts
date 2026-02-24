@@ -41,6 +41,10 @@ app.use('/api/exam', examPrepRouter);
 
 app.use(errorHandler);
 
-app.listen(parseInt(env.PORT), () => {
+const server = app.listen(parseInt(env.PORT), () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT}`);
 });
+
+// Graceful shutdown so tsx watch can restart without EADDRINUSE
+process.on('SIGTERM', () => server.close());
+process.on('SIGINT',  () => server.close());

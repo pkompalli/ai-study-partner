@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, LogOut, BookOpen, ChevronDown, ChevronRight, GraduationCap } from 'lucide-react';
+import { Plus, LogOut, BookOpen, ChevronDown, ChevronRight, GraduationCap, Settings, LayoutDashboard } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { useCourseStore } from '@/store/courseStore';
+import { useSessionStore } from '@/store/sessionStore';
 import { SidebarCourseTree } from '@/components/session/SidebarCourseTree';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +12,7 @@ export function Sidebar() {
   const { isSidebarOpen, setSidebarOpen } = useUIStore();
   const { signOut, user } = useAuthStore();
   const { courses, activeCourse, loading } = useCourseStore();
+  const activeSession = useSessionStore(s => s.activeSession);
 
   // Track which courses are expanded
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -47,18 +49,38 @@ export function Sidebar() {
         isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}
     >
-      {/* Logo */}
-      <div className="p-4 border-b border-gray-100 flex items-center gap-2 flex-shrink-0">
-        <div className="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center">
+      {/* Logo — click goes to Dashboard */}
+      <Link to="/dashboard" onClick={closeMobile} className="p-4 border-b border-gray-100 flex items-center gap-2 flex-shrink-0 hover:bg-gray-50 transition-colors">
+        <div className="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center flex-shrink-0">
           <BookOpen className="h-4 w-4 text-white" />
         </div>
         <span className="font-bold text-gray-900">Study Partner</span>
-      </div>
+      </Link>
 
       {/* Courses section — scrollable */}
       <div className="flex-1 overflow-y-auto">
+        {/* Top nav links */}
+        <div className="px-2 pt-2 pb-1 space-y-0.5">
+          <Link
+            to="/dashboard"
+            onClick={closeMobile}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors"
+          >
+            <LayoutDashboard className="h-3.5 w-3.5 text-gray-400" />
+            <span className="text-xs font-medium text-gray-600">Dashboard</span>
+          </Link>
+          <Link
+            to="/settings"
+            onClick={closeMobile}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors"
+          >
+            <Settings className="h-3.5 w-3.5 text-gray-400" />
+            <span className="text-xs font-medium text-gray-600">Settings</span>
+          </Link>
+        </div>
+
         {/* Section header */}
-        <div className="flex items-center justify-between px-4 pt-3 pb-1">
+        <div className="flex items-center justify-between px-4 pt-1 pb-1">
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Courses</span>
           <Link
             to="/onboarding"
@@ -88,26 +110,43 @@ export function Sidebar() {
           <div className="px-2 pb-3 space-y-0.5">
             {courses.map(course => (
               <div key={course.id}>
-                {/* Course header row */}
-                <button
-                  onClick={() => toggle(course.id)}
-                  className={cn(
-                    'w-full flex items-center gap-1.5 px-2 py-2 rounded-lg text-left transition-colors',
-                    activeCourse?.id === course.id
-                      ? 'bg-primary-50 text-primary-800'
-                      : 'hover:bg-gray-50 text-gray-700'
-                  )}
-                >
-                  {expanded.has(course.id)
-                    ? <ChevronDown className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                    : <ChevronRight className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                  }
-                  {course.goal === 'exam_prep'
-                    ? <GraduationCap className="h-3.5 w-3.5 text-primary-500 flex-shrink-0" />
-                    : <BookOpen className="h-3.5 w-3.5 text-primary-500 flex-shrink-0" />
-                  }
-                  <span className="text-xs font-semibold truncate flex-1">{course.name}</span>
-                </button>
+                {/* Course header row: chevron + name (link) + settings icon */}
+                <div className={cn(
+                  'flex items-center rounded-lg transition-colors',
+                  activeCourse?.id === course.id ? 'bg-primary-50' : 'hover:bg-gray-50'
+                )}>
+                  <button
+                    onClick={() => toggle(course.id)}
+                    className="p-1.5 flex-shrink-0 rounded-lg"
+                  >
+                    {expanded.has(course.id)
+                      ? <ChevronDown className="h-3 w-3 text-gray-400" />
+                      : <ChevronRight className="h-3 w-3 text-gray-400" />
+                    }
+                  </button>
+                  <Link
+                    to={`/courses/${course.id}`}
+                    onClick={closeMobile}
+                    className={cn(
+                      'flex items-center gap-1.5 py-1.5 flex-1 min-w-0 transition-colors',
+                      activeCourse?.id === course.id ? 'text-primary-800' : 'text-gray-700'
+                    )}
+                  >
+                    {course.goal === 'exam_prep'
+                      ? <GraduationCap className="h-3.5 w-3.5 text-primary-500 flex-shrink-0" />
+                      : <BookOpen className="h-3.5 w-3.5 text-primary-500 flex-shrink-0" />
+                    }
+                    <span className="text-xs font-semibold truncate">{course.name}</span>
+                  </Link>
+                  <Link
+                    to="/settings"
+                    onClick={closeMobile}
+                    title="Settings & exam formats"
+                    className="p-1.5 flex-shrink-0 text-gray-300 hover:text-gray-600 transition-colors"
+                  >
+                    <Settings className="h-3 w-3" />
+                  </Link>
+                </div>
 
                 {/* Expanded tree */}
                 {expanded.has(course.id) && course.subjects && course.subjects.length > 0 && (
@@ -115,6 +154,7 @@ export function Sidebar() {
                     <SidebarCourseTree
                       subjects={course.subjects}
                       courseId={course.id}
+                      activeTopicId={activeSession?.course_id === course.id ? activeSession?.topic_id : undefined}
                       onNavigate={closeMobile}
                     />
                   </div>

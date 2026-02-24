@@ -1,5 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
 import { InlineMermaid } from './InlineMermaid';
 import { InlineQuiz } from './InlineQuiz';
@@ -63,7 +65,11 @@ interface Props {
 export function RichMessageContent({ content, invert }: Props) {
   return (
     <div className={cn('prose prose-sm max-w-none', invert && 'prose-invert')}>
-      <ReactMarkdown components={makeComponents(invert)}>{content}</ReactMarkdown>
+      <ReactMarkdown
+        remarkPlugins={[remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={makeComponents(invert)}
+      >{content}</ReactMarkdown>
     </div>
   );
 }

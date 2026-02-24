@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 import { llmLimiter } from '../middleware/rateLimiter.js';
 import {
-  extractCourse, createCourse, getCourses, getCourse, updateCourse, removeCourse, getCourseProgress,
+  extractCourse, createCourse, getCourses, getCourse, updateCourse, replaceStructureHandler, removeCourse, getCourseProgress,
 } from '../controllers/courses.controller.js';
 
 const router = Router();
@@ -14,6 +14,7 @@ router.get('/', requireAuth, getCourses);
 router.get('/:id/progress', requireAuth, getCourseProgress);
 router.get('/:id', requireAuth, getCourse);
 router.patch('/:id', requireAuth, updateCourse);
+router.put('/:id/structure', requireAuth, replaceStructureHandler);
 router.delete('/:id', requireAuth, removeCourse);
 
 export default router;
