@@ -214,6 +214,16 @@ async function runWithConcurrency<T>(
   return results;
 }
 
+/** Derive a sensible difficulty level from the marks allocated when no explicit difficulty is set.
+ *  1 mark → recall (1), 2 → application (2), 3 → standard (3), 4 → hard (4), 5+ → stretch (5). */
+function marksToDefaultDifficulty(marks: number): number {
+  if (marks <= 1) return 1;
+  if (marks <= 2) return 2;
+  if (marks <= 3) return 3;
+  if (marks <= 4) return 4;
+  return 5;
+}
+
 function getMaxTokensForType(questionType: string): number {
   switch (questionType) {
     case 'long_answer': return 1400;
@@ -295,7 +305,7 @@ export async function generateExamQuestions(params: {
           courseName,
           examName,
           levelLabel: level.label,
-          difficulty,
+          difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
         });
         const raw = await chatCompletion(
           [{ role: 'user', content: prompt }],
@@ -326,7 +336,7 @@ export async function generateExamQuestions(params: {
             examName,
             levelLabel: level.label,
             existingQuestions: capturedExisting,
-            difficulty,
+            difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
           });
           const raw = await chatCompletion(
             [{ role: 'user', content: prompt }],

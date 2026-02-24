@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { saveCourse, getCourseWithTree, listCourses, deleteCourse, updateCourse as updateCourseInDb, replaceStructure } from '../db/courses.db.js';
-import { getTopicProgressForCourse } from '../db/sessions.db.js';
+import { getTopicProgressForCourse, getChapterProgressForCourse } from '../db/sessions.db.js';
 import {
   extractCourseFromText,
   extractCourseFromPDF,
@@ -120,8 +120,11 @@ export async function removeCourse(req: Request, res: Response, next: NextFuncti
 
 export async function getCourseProgress(req: Request, res: Response, next: NextFunction) {
   try {
-    const progress = getTopicProgressForCourse(req.user!.id, req.params['id'] as string);
-    res.json(progress);
+    const userId = req.user!.id;
+    const courseId = req.params['id'] as string;
+    const topicProgress = getTopicProgressForCourse(userId, courseId);
+    const chapterProgress = getChapterProgressForCourse(userId, courseId);
+    res.json({ topicProgress, chapterProgress });
   } catch (err) {
     next(err);
   }

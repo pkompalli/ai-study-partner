@@ -417,11 +417,11 @@ export function SessionPage() {
   };
 
   const handleLoadExamBatch = async (formatId: string) => {
-    await loadSessionBatch(formatId, activeSession?.topic_id);
+    await loadSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
   };
 
   const handleRefreshBatch = async (formatId: string, difficulty: number) => {
-    await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.topic_id);
+    await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.topic_id, activeSession?.chapter_id);
   };
 
   const handleSummaryDepthChange = (newDepth: number) => {
@@ -574,7 +574,7 @@ export function SessionPage() {
               sessionBatchGenerating={sessionBatchGenerating}
               examDifficulty={examDifficulty}
               onLoadBatch={handleLoadExamBatch}
-              onLoadMore={(formatId) => loadMoreSessionBatch(formatId, activeSession?.topic_id)}
+              onLoadMore={(formatId) => loadMoreSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id)}
               onSetAnswerText={setSessionAnswerText}
               onSetOption={setSessionSelectedOption}
               onSubmit={(qId, files) => submitSessionAnswer(qId, files)}

@@ -8,27 +8,37 @@ interface SidebarCourseTreeProps {
   subjects: Subject[];
   courseId: string;
   activeTopicId?: string;
+  activeChapterId?: string;
   onNavigate?: () => void;
 }
 
-export function SidebarCourseTree({ subjects, courseId, activeTopicId, onNavigate }: SidebarCourseTreeProps) {
+export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeChapterId, onNavigate }: SidebarCourseTreeProps) {
   const navigate = useNavigate();
   const { startSession } = useSessionStore();
 
   const [expanded, setExpanded] = useState<Set<string>>(() => {
-    if (!activeTopicId) return new Set();
-    const activeSubject = subjects.find(s => s.topics.some(t => t.id === activeTopicId));
-    return activeSubject ? new Set([activeSubject.id]) : new Set();
+    // Auto-expand the subject (and optionally expose the topic) containing the active chapter or topic
+    const matchSubject = subjects.find(s =>
+      s.topics.some(t =>
+        t.id === activeTopicId ||
+        (activeChapterId && t.chapters.some(c => c.id === activeChapterId))
+      )
+    );
+    return matchSubject ? new Set([matchSubject.id]) : new Set();
   });
 
-  // Keep the active subject expanded if activeTopicId changes after mount
+  // Keep the active subject expanded if active ids change after mount
   useEffect(() => {
-    if (!activeTopicId) return;
-    const activeSubject = subjects.find(s => s.topics.some(t => t.id === activeTopicId));
-    if (activeSubject) {
-      setExpanded(prev => prev.has(activeSubject.id) ? prev : new Set([...prev, activeSubject.id]));
+    const matchSubject = subjects.find(s =>
+      s.topics.some(t =>
+        t.id === activeTopicId ||
+        (activeChapterId && t.chapters.some(c => c.id === activeChapterId))
+      )
+    );
+    if (matchSubject) {
+      setExpanded(prev => prev.has(matchSubject.id) ? prev : new Set([...prev, matchSubject.id]));
     }
-  }, [activeTopicId, subjects]);
+  }, [activeTopicId, activeChapterId, subjects]);
 
   const toggle = (id: string) => {
     setExpanded(prev => {
@@ -77,15 +87,23 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, onNavigat
                     {topic.name}
                   </button>
                   <div className="ml-3 space-y-0.5">
-                    {topic.chapters.map(chapter => (
-                      <button
-                        key={chapter.id}
-                        onClick={() => handleNavigate(topic.id, chapter.id)}
-                        className="w-full text-left px-2 py-0.5 rounded text-xs text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors truncate"
-                      >
-                        • {chapter.name}
-                      </button>
-                    ))}
+                    {topic.chapters.map(chapter => {
+                      const isActiveChapter = chapter.id === activeChapterId;
+                      return (
+                        <button
+                          key={chapter.id}
+                          onClick={() => handleNavigate(topic.id, chapter.id)}
+                          className={`w-full text-left px-2 py-0.5 rounded text-xs transition-colors truncate ${
+                            isActiveChapter
+                              ? 'text-orange-800 font-medium'
+                              : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                          }`}
+                          style={isActiveChapter ? { outline: '2px solid #fb923c', backgroundColor: '#fff7ed' } : undefined}
+                        >
+                          • {chapter.name}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ))}

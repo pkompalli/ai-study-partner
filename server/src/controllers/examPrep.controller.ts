@@ -5,7 +5,7 @@ import {
   createAttempt, getAttempt, upsertAnswer, markAnswer as markAnswerDb,
   submitAttempt, getTopicReadinessForCourse,
 } from '../db/examBank.db.js';
-import { getCourseContext, getCourseWithTree } from '../db/courses.db.js';
+import { getCourseContext, getCourseWithTree, getTopicName, getChapterName } from '../db/courses.db.js';
 import { inferExamFormat, generateExamQuestions, extractExamFromPaper, extractTextFromPDF } from '../services/llm/examQuestionGenerator.js';
 import type { ExtractedQuestion, ExtractedSection } from '../services/llm/examQuestionGenerator.js';
 import { markAnswer, getHint } from '../services/llm/examMarker.js';
@@ -353,7 +353,9 @@ export async function generateBatchHandler(req: Request, res: Response, next: Ne
   try {
     const userId = req.user!.id;
     const formatId = req.params['id'] as string;
-    const { count = 5, difficulty = 3, topicId } = req.body as { count?: number; difficulty?: number; topicId?: string };
+    const { count = 5, difficulty = 3, topicId, chapterId } = req.body as {
+      count?: number; difficulty?: number; topicId?: string; chapterId?: string;
+    };
 
     const format = getExamFormat(formatId, userId);
     if (!format) { res.status(404).json({ error: 'Format not found' }); return; }
@@ -369,9 +371,22 @@ export async function generateBatchHandler(req: Request, res: Response, next: Ne
 
     if (allTopics.length === 0) { res.status(400).json({ error: 'Course has no topics' }); return; }
 
-    // Filter to the session's current topic if provided; fall back to all topics
-    const matchedTopics = topicId ? allTopics.filter(t => t.id === topicId) : [];
-    const topics = matchedTopics.length > 0 ? matchedTopics : allTopics;
+    // When chapter is set, scope questions to that chapter using it as the topic name
+    // so LLM generates chapter-specific content rather than topic-wide content.
+    let topics: Array<{ id: string; name: string; subjectName?: string }>;
+    if (chapterId) {
+      const chapterName = getChapterName(chapterId);
+      const parentTopicName = topicId ? (getTopicName(topicId) ?? undefined) : undefined;
+      if (chapterName) {
+        topics = [{ id: chapterId, name: chapterName, subjectName: parentTopicName }];
+      } else {
+        const matched = topicId ? allTopics.filter(t => t.id === topicId) : [];
+        topics = matched.length > 0 ? matched : allTopics;
+      }
+    } else {
+      const matchedTopics = topicId ? allTopics.filter(t => t.id === topicId) : [];
+      topics = matchedTopics.length > 0 ? matchedTopics : allTopics;
+    }
 
     const generated = await generateExamQuestions({
       sections: format.sections,

@@ -28,20 +28,35 @@ export interface TopicCheckQuestion {
 
 // ─── Cards ────────────────────────────────────────────────────────────────────
 
-export function getTopicCards(userId: string, topicId: string): TopicCard[] {
+export function getTopicCards(userId: string, topicId: string, chapterId?: string): TopicCard[] {
+  if (chapterId) {
+    return (db.prepare(`
+      SELECT id, front, back, mnemonic, depth,
+             ease_factor, interval_days, times_seen, times_correct,
+             next_review_at, last_reviewed_at, created_at
+      FROM topic_cards
+      WHERE user_id = ? AND topic_id = ? AND chapter_id = ?
+      ORDER BY created_at ASC
+    `).all(userId, topicId, chapterId) as TopicCard[]);
+  }
   return (db.prepare(`
     SELECT id, front, back, mnemonic, depth,
            ease_factor, interval_days, times_seen, times_correct,
            next_review_at, last_reviewed_at, created_at
     FROM topic_cards
-    WHERE user_id = ? AND topic_id = ?
+    WHERE user_id = ? AND topic_id = ? AND chapter_id IS NULL
     ORDER BY created_at ASC
   `).all(userId, topicId) as TopicCard[]);
 }
 
-export function getTopicCardFronts(userId: string, topicId: string): string[] {
+export function getTopicCardFronts(userId: string, topicId: string, chapterId?: string): string[] {
+  if (chapterId) {
+    return (db.prepare(
+      'SELECT front FROM topic_cards WHERE user_id = ? AND topic_id = ? AND chapter_id = ?'
+    ).all(userId, topicId, chapterId) as { front: string }[]).map(r => r.front);
+  }
   return (db.prepare(
-    'SELECT front FROM topic_cards WHERE user_id = ? AND topic_id = ?'
+    'SELECT front FROM topic_cards WHERE user_id = ? AND topic_id = ? AND chapter_id IS NULL'
   ).all(userId, topicId) as { front: string }[]).map(r => r.front);
 }
 
@@ -52,16 +67,17 @@ export function saveTopicCards(
   sessionId: string,
   depth: number,
   cards: Array<{ front: string; back: string; mnemonic?: string | null }>,
+  chapterId?: string,
 ): void {
   const insert = db.prepare(`
     INSERT OR IGNORE INTO topic_cards
-      (id, user_id, topic_id, course_id, session_id, front, back, mnemonic, depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, topic_id, course_id, session_id, chapter_id, front, back, mnemonic, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   db.transaction((items: typeof cards) => {
     for (const c of items) {
       insert.run(randomUUID(), userId, topicId, courseId, sessionId,
-        c.front, c.back, c.mnemonic ?? null, depth);
+        chapterId ?? null, c.front, c.back, c.mnemonic ?? null, depth);
     }
   })(cards);
 }
@@ -73,22 +89,24 @@ export function saveSingleCard(
   sessionId: string,
   front: string,
   back: string,
+  chapterId?: string,
 ): TopicCard | null {
   const id = randomUUID();
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO topic_cards
-      (id, user_id, topic_id, course_id, session_id, front, back, mnemonic, depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0)
+      (id, user_id, topic_id, course_id, session_id, chapter_id, front, back, mnemonic, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 0)
   `);
-  const result = stmt.run(id, userId, topicId, courseId, sessionId, front, back);
+  const result = stmt.run(id, userId, topicId, courseId, sessionId, chapterId ?? null, front, back);
 
   if (result.changes === 0) {
     // Already saved — return existing card
-    return db.prepare(`
-      SELECT id, front, back, mnemonic, depth, ease_factor, interval_days,
-             times_seen, times_correct, next_review_at, last_reviewed_at, created_at
-      FROM topic_cards WHERE user_id = ? AND topic_id = ? AND front = ?
-    `).get(userId, topicId, front) as TopicCard ?? null;
+    const q = chapterId
+      ? 'SELECT id, front, back, mnemonic, depth, ease_factor, interval_days, times_seen, times_correct, next_review_at, last_reviewed_at, created_at FROM topic_cards WHERE user_id = ? AND topic_id = ? AND chapter_id = ? AND front = ?'
+      : 'SELECT id, front, back, mnemonic, depth, ease_factor, interval_days, times_seen, times_correct, next_review_at, last_reviewed_at, created_at FROM topic_cards WHERE user_id = ? AND topic_id = ? AND chapter_id IS NULL AND front = ?';
+    return (chapterId
+      ? db.prepare(q).get(userId, topicId, chapterId, front)
+      : db.prepare(q).get(userId, topicId, front)) as TopicCard ?? null;
   }
 
   return db.prepare(`
@@ -218,13 +236,14 @@ export function getCrossTopicCards(
 
 // ─── Check questions ──────────────────────────────────────────────────────────
 
-export function getTopicCheckQuestions(userId: string, topicId: string): TopicCheckQuestion[] {
-  const rows = db.prepare(
-    'SELECT id, question, options, correct_index, explanation, depth, created_at FROM topic_check_questions WHERE user_id = ? AND topic_id = ? ORDER BY created_at ASC'
-  ).all(userId, topicId) as Array<{
-    id: string; question: string; options: string;
-    correct_index: number; explanation: string; depth: number; created_at: string;
-  }>;
+export function getTopicCheckQuestions(userId: string, topicId: string, chapterId?: string): TopicCheckQuestion[] {
+  const rows = chapterId
+    ? (db.prepare(
+        'SELECT id, question, options, correct_index, explanation, depth, created_at FROM topic_check_questions WHERE user_id = ? AND topic_id = ? AND chapter_id = ? ORDER BY created_at ASC'
+      ).all(userId, topicId, chapterId) as Array<{ id: string; question: string; options: string; correct_index: number; explanation: string; depth: number; created_at: string }>)
+    : (db.prepare(
+        'SELECT id, question, options, correct_index, explanation, depth, created_at FROM topic_check_questions WHERE user_id = ? AND topic_id = ? AND chapter_id IS NULL ORDER BY created_at ASC'
+      ).all(userId, topicId) as Array<{ id: string; question: string; options: string; correct_index: number; explanation: string; depth: number; created_at: string }>);
   return rows.map(r => ({
     id: r.id,
     question: r.question,
@@ -243,16 +262,17 @@ export function saveTopicCheckQuestions(
   sessionId: string,
   depth: number,
   questions: Array<{ question: string; options: string[]; correctIndex: number; explanation: string }>,
+  chapterId?: string,
 ): void {
   const insert = db.prepare(`
     INSERT OR IGNORE INTO topic_check_questions
-      (id, user_id, topic_id, course_id, session_id, question, options, correct_index, explanation, depth)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, user_id, topic_id, course_id, session_id, chapter_id, question, options, correct_index, explanation, depth)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   db.transaction((items: typeof questions) => {
     for (const q of items) {
       insert.run(randomUUID(), userId, topicId, courseId, sessionId,
-        q.question, JSON.stringify(q.options), q.correctIndex, q.explanation, depth);
+        chapterId ?? null, q.question, JSON.stringify(q.options), q.correctIndex, q.explanation, depth);
     }
   })(questions);
 }

@@ -7,9 +7,10 @@ interface CourseTreeProps {
   subjects: Subject[];
   onStartSession: (topicId: string, chapterId?: string) => void;
   topicProgress?: Record<string, { status: string }>;
+  chapterProgress?: Record<string, { status: string }>;
 }
 
-export function CourseTree({ subjects, onStartSession, topicProgress }: CourseTreeProps) {
+export function CourseTree({ subjects, onStartSession, topicProgress, chapterProgress }: CourseTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set([subjects[0]?.id]));
 
   const toggle = (id: string) => {
@@ -59,17 +60,26 @@ export function CourseTree({ subjects, onStartSession, topicProgress }: CourseTr
                     </button>
                   </div>
                   <div className="space-y-1 pl-2">
-                    {topic.chapters.map(chapter => (
-                      <div key={chapter.id} className={cn('flex items-center justify-between gap-2 py-1')}>
-                        <span className="text-xs text-gray-500">• {chapter.name}</span>
-                        <button
-                          onClick={() => onStartSession(topic.id, chapter.id)}
-                          className="text-xs text-primary-500 hover:text-primary-700"
-                        >
-                          Start
-                        </button>
-                      </div>
-                    ))}
+                    {topic.chapters.map(chapter => {
+                      const chapterStatus = chapterProgress?.[chapter.id]?.status;
+                      const chapterDot = chapterStatus === 'completed' ? 'bg-green-400'
+                        : chapterStatus === 'in_progress' ? 'bg-amber-400'
+                        : 'bg-gray-200';
+                      return (
+                        <div key={chapter.id} className={cn('flex items-center justify-between gap-2 py-1')}>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${chapterDot}`} />
+                            <span className="text-xs text-gray-500 truncate">{chapter.name}</span>
+                          </div>
+                          <button
+                            onClick={() => onStartSession(topic.id, chapter.id)}
+                            className="text-xs text-primary-500 hover:text-primary-700 flex-shrink-0"
+                          >
+                            Start
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 );

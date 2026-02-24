@@ -7,6 +7,7 @@ interface CourseState {
   activeCourse: Course | null;
   loading: boolean;
   topicProgress: Record<string, { status: string; last_studied: string }>;
+  chapterProgress: Record<string, { status: string; last_studied: string }>;
   fetchCourses: () => Promise<void>;
   fetchCourse: (id: string) => Promise<Course>;
   createCourse: (payload: unknown) => Promise<string>;
@@ -22,6 +23,7 @@ export const useCourseStore = create<CourseState>((set, get) => ({
   activeCourse: null,
   loading: false,
   topicProgress: {},
+  chapterProgress: {},
 
   fetchCourses: async () => {
     set({ loading: true });
@@ -70,7 +72,10 @@ export const useCourseStore = create<CourseState>((set, get) => ({
   setActiveCourse: (course) => set({ activeCourse: course }),
 
   fetchTopicProgress: async (courseId) => {
-    const { data } = await api.get<Record<string, { status: string; last_studied: string }>>(`/api/courses/${courseId}/progress`);
-    set({ topicProgress: data });
+    const { data } = await api.get<{
+      topicProgress: Record<string, { status: string; last_studied: string }>;
+      chapterProgress: Record<string, { status: string; last_studied: string }>;
+    }>(`/api/courses/${courseId}/progress`);
+    set({ topicProgress: data.topicProgress ?? {}, chapterProgress: data.chapterProgress ?? {} });
   },
 }));

@@ -237,6 +237,37 @@ addCol('topic_cards', 'times_seen',      'INTEGER NOT NULL DEFAULT 0');
 addCol('topic_cards', 'times_correct',   'INTEGER NOT NULL DEFAULT 0');
 addCol('topic_cards', 'next_review_at',  'TEXT');
 addCol('topic_cards', 'last_reviewed_at','TEXT');
+addCol('topic_cards', 'chapter_id',      'TEXT');
+
+addCol('topic_check_questions', 'chapter_id', 'TEXT');
+
+// Chapter-level summary cache and progress — separate from topic-level tables
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chapter_summaries (
+    chapter_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    depth INTEGER NOT NULL,
+    summary TEXT NOT NULL,
+    question TEXT NOT NULL DEFAULT '',
+    answer_pills TEXT NOT NULL DEFAULT '[]',
+    correct_index INTEGER NOT NULL DEFAULT -1,
+    explanation TEXT NOT NULL DEFAULT '',
+    starters TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (chapter_id, user_id, depth)
+  );
+
+  CREATE TABLE IF NOT EXISTS chapter_progress (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    chapter_id TEXT NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    topic_id TEXT NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    status TEXT NOT NULL DEFAULT 'in_progress',
+    last_studied TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, chapter_id)
+  );
+`);
 
 // Topic summary cache — persists summaries per (topic, user, depth)
 db.exec(`

@@ -2,8 +2,9 @@ import type { Request, Response, NextFunction } from 'express';
 import {
   createSession, getSession, getSessionMessages, saveMessage,
   endSession, listSessions, saveQuiz, submitQuizAnswers, saveFlashcardSet,
-  upsertTopicProgress,
+  upsertTopicProgress, upsertChapterProgress,
   getCachedSummary, getLastCachedDepth, saveSummaryCache,
+  getCachedChapterSummary, getLastCachedChapterDepth, saveChapterSummaryCache,
 } from '../db/sessions.db.js';
 import { saveArtifact } from '../db/artifacts.db.js';
 import { getTopicName, getChapterName, getCourseContext } from '../db/courses.db.js';
@@ -125,20 +126,27 @@ export async function requestFlashcards(req: Request, res: Response, next: NextF
     const session = getSession(sessionId, userId);
     const messages = getSessionMessages(sessionId);
     const topicId = session['topic_id'] as string | undefined;
+    const chapterId = session['chapter_id'] as string | undefined;
     const courseId = session['course_id'] as string;
 
     let topicName = 'General';
+    let chapterName: string | undefined;
     if (topicId) {
       topicName = getTopicName(topicId) ?? 'General';
     }
+    if (chapterId) {
+      chapterName = getChapterName(chapterId);
+    }
 
-    // Load existing card fronts so the LLM generates only new concepts
-    const existingFronts = topicId ? getTopicCardFronts(userId, topicId) : [];
-    const newCards = await generateFlashcards(topicName, messages, existingFronts);
+    const flashcardContext = chapterName ? `${topicName} — ${chapterName}` : topicName;
+
+    // Load existing card fronts so the LLM generates only new concepts (scoped to chapter when set)
+    const existingFronts = topicId ? getTopicCardFronts(userId, topicId, chapterId) : [];
+    const newCards = await generateFlashcards(flashcardContext, messages, existingFronts);
 
     // Persist new cards to the topic bank (INSERT OR IGNORE deduplicates)
     if (topicId && newCards.length > 0) {
-      saveTopicCards(userId, topicId, courseId, sessionId, depth, newCards);
+      saveTopicCards(userId, topicId, courseId, sessionId, depth, newCards, chapterId);
     }
 
     // Also save to the session-scoped flashcard_sets for backwards compat
@@ -147,9 +155,9 @@ export async function requestFlashcards(req: Request, res: Response, next: NextF
       saveMessage(sessionId, 'assistant', 'Here are your flashcards!', 'flashcards', { setId, cards: newCards });
     }
 
-    // Return the full topic bank (existing + new) so the client always shows the complete deck
+    // Return the full bank scoped to this chapter (or topic if no chapter)
     const allCards = topicId
-      ? getTopicCards(userId, topicId)
+      ? getTopicCards(userId, topicId, chapterId)
       : newCards;
 
     res.json({ id: setId, cards: allCards });
@@ -192,36 +200,41 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
 
     const session = getSession(sessionId, userId);
     const topicId = session['topic_id'] as string | undefined;
+    const chapterId = session['chapter_id'] as string | undefined;
 
-    // Determine effective depth:
-    // depth=0 means "restore last viewed depth for this topic, or default to 1"
+    // Determine effective depth — depth=0 means "restore last viewed depth, or default to 1"
+    // Prefer chapter-scoped depth when chapter is set
     let depth: number;
-    if (rawDepth === 0 && topicId) {
-      depth = getLastCachedDepth(userId, topicId) ?? 1;
+    if (rawDepth === 0) {
+      const lastDepth = chapterId
+        ? (getLastCachedChapterDepth(userId, chapterId) ?? (topicId ? getLastCachedDepth(userId, topicId) : null))
+        : (topicId ? getLastCachedDepth(userId, topicId) : null);
+      depth = lastDepth ?? 1;
     } else {
       depth = Math.max(1, Math.min(5, rawDepth || 1));
     }
 
-    // Serve from cache if available
-    if (topicId) {
-      const cached = getCachedSummary(userId, topicId, depth);
-      if (cached) {
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders();
-        res.write(`data: ${JSON.stringify({ type: 'chunk', content: cached.summary })}\n\n`);
-        res.write(`data: ${JSON.stringify({
-          type: 'done', depth,
-          question: cached.question,
-          answerPills: cached.answer_pills,
-          correctIndex: cached.correct_index,
-          explanation: cached.explanation,
-          starters: cached.starters,
-        })}\n\n`);
-        res.end();
-        return;
-      }
+    // Serve from cache if available — chapter cache takes priority over topic cache
+    const cached = chapterId
+      ? getCachedChapterSummary(userId, chapterId, depth)
+      : (topicId ? getCachedSummary(userId, topicId, depth) : null);
+
+    if (cached) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+      res.write(`data: ${JSON.stringify({ type: 'chunk', content: cached.summary })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        type: 'done', depth,
+        question: cached.question,
+        answerPills: cached.answer_pills,
+        correctIndex: cached.correct_index,
+        explanation: cached.explanation,
+        starters: cached.starters,
+      })}\n\n`);
+      res.end();
+      return;
     }
 
     // Cache miss — generate via LLM
@@ -245,8 +258,17 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
       depth,
     });
 
-    // Persist to cache (response is already sent)
-    if (topicId) {
+    // Persist to cache — store under chapter cache when chapter_id is present
+    if (chapterId) {
+      saveChapterSummaryCache(userId, chapterId, depth, {
+        summary: result.summary,
+        question: result.question,
+        answer_pills: result.answerPills,
+        correct_index: result.correctIndex,
+        explanation: result.explanation,
+        starters: result.starters,
+      });
+    } else if (topicId) {
       saveSummaryCache(userId, topicId, depth, {
         summary: result.summary,
         question: result.question,
@@ -351,6 +373,7 @@ export async function saveCardFromQuestion(req: Request, res: Response, next: Ne
 
     const session = getSession(sessionId, userId);
     const topicId = session['topic_id'] as string | undefined;
+    const chapterId = session['chapter_id'] as string | undefined;
     const courseId = session['course_id'] as string;
 
     if (!topicId) {
@@ -359,7 +382,7 @@ export async function saveCardFromQuestion(req: Request, res: Response, next: Ne
     }
 
     const back = explanation ? `${answer}\n\n${explanation}` : answer;
-    const card = saveSingleCard(userId, topicId, courseId, sessionId, question, back);
+    const card = saveSingleCard(userId, topicId, courseId, sessionId, question, back, chapterId);
 
     if (!card) {
       res.status(500).json({ error: 'Failed to save card' });
@@ -415,12 +438,13 @@ export async function getTopicBankCards(req: Request, res: Response, next: NextF
     const sessionId = req.params['id'] as string;
     const session = getSession(sessionId, userId);
     const topicId = session['topic_id'] as string | undefined;
+    const chapterId = session['chapter_id'] as string | undefined;
 
     if (!topicId) {
       res.json({ cards: [] });
       return;
     }
-    const cards = getTopicCards(userId, topicId);
+    const cards = getTopicCards(userId, topicId, chapterId);
     res.json({ cards });
   } catch (err) {
     next(err);
@@ -433,12 +457,13 @@ export async function getTopicBankQuestions(req: Request, res: Response, next: N
     const sessionId = req.params['id'] as string;
     const session = getSession(sessionId, userId);
     const topicId = session['topic_id'] as string | undefined;
+    const chapterId = session['chapter_id'] as string | undefined;
 
     if (!topicId) {
       res.json({ questions: [] });
       return;
     }
-    const questions = getTopicCheckQuestions(userId, topicId);
+    const questions = getTopicCheckQuestions(userId, topicId, chapterId);
     res.json({ questions });
   } catch (err) {
     next(err);
@@ -482,6 +507,15 @@ export async function endSessionHandler(req: Request, res: Response, next: NextF
 
     if (session['topic_id']) {
       upsertTopicProgress(userId, session['topic_id'] as string, session['course_id'] as string, 'completed');
+    }
+    if (session['chapter_id'] && session['topic_id']) {
+      upsertChapterProgress(
+        userId,
+        session['chapter_id'] as string,
+        session['topic_id'] as string,
+        session['course_id'] as string,
+        'completed',
+      );
     }
 
     res.json({ artifactId });

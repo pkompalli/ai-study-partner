@@ -210,3 +210,94 @@ export function saveSummaryCache(
     JSON.stringify(data.starters),
   );
 }
+
+// ─── Chapter summary cache ─────────────────────────────────────────────────────
+
+export function getCachedChapterSummary(userId: string, chapterId: string, depth: number): CachedSummary | null {
+  const row = db.prepare(
+    'SELECT * FROM chapter_summaries WHERE chapter_id = ? AND user_id = ? AND depth = ?'
+  ).get(chapterId, userId, depth) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    depth: row['depth'] as number,
+    summary: row['summary'] as string,
+    question: row['question'] as string,
+    answer_pills: JSON.parse(row['answer_pills'] as string),
+    correct_index: row['correct_index'] as number,
+    explanation: row['explanation'] as string,
+    starters: JSON.parse(row['starters'] as string),
+  };
+}
+
+export function getLastCachedChapterDepth(userId: string, chapterId: string): number | null {
+  const row = db.prepare(
+    'SELECT depth FROM chapter_summaries WHERE chapter_id = ? AND user_id = ? ORDER BY updated_at DESC LIMIT 1'
+  ).get(chapterId, userId) as { depth: number } | undefined;
+  return row?.depth ?? null;
+}
+
+export function saveChapterSummaryCache(
+  userId: string,
+  chapterId: string,
+  depth: number,
+  data: {
+    summary: string;
+    question: string;
+    answer_pills: string[];
+    correct_index: number;
+    explanation: string;
+    starters: string[];
+  },
+): void {
+  db.prepare(`
+    INSERT INTO chapter_summaries (chapter_id, user_id, depth, summary, question, answer_pills, correct_index, explanation, starters, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(chapter_id, user_id, depth) DO UPDATE SET
+      summary = excluded.summary,
+      question = excluded.question,
+      answer_pills = excluded.answer_pills,
+      correct_index = excluded.correct_index,
+      explanation = excluded.explanation,
+      starters = excluded.starters,
+      updated_at = excluded.updated_at
+  `).run(
+    chapterId, userId, depth,
+    data.summary, data.question,
+    JSON.stringify(data.answer_pills),
+    data.correct_index,
+    data.explanation,
+    JSON.stringify(data.starters),
+  );
+}
+
+// ─── Chapter progress ──────────────────────────────────────────────────────────
+
+export function upsertChapterProgress(
+  userId: string,
+  chapterId: string,
+  topicId: string,
+  courseId: string,
+  status: string,
+): void {
+  const existing = db.prepare('SELECT id FROM chapter_progress WHERE user_id = ? AND chapter_id = ?').get(userId, chapterId);
+  if (existing) {
+    db.prepare(
+      'UPDATE chapter_progress SET status = ?, last_studied = ? WHERE user_id = ? AND chapter_id = ?'
+    ).run(status, new Date().toISOString(), userId, chapterId);
+  } else {
+    db.prepare(`
+      INSERT INTO chapter_progress (id, user_id, chapter_id, topic_id, course_id, status, last_studied)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(randomUUID(), userId, chapterId, topicId, courseId, status, new Date().toISOString());
+  }
+}
+
+export function getChapterProgressForCourse(
+  userId: string,
+  courseId: string,
+): Record<string, { status: string; last_studied: string }> {
+  const rows = db.prepare(
+    'SELECT chapter_id, status, last_studied FROM chapter_progress WHERE user_id = ? AND course_id = ?'
+  ).all(userId, courseId) as Array<{ chapter_id: string; status: string; last_studied: string }>;
+  return Object.fromEntries(rows.map(r => [r.chapter_id, { status: r.status, last_studied: r.last_studied }]));
+}
