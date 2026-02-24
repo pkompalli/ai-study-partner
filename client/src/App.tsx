@@ -10,6 +10,7 @@ import { OnboardingPage } from '@/pages/OnboardingPage';
 import { CoursePage } from '@/pages/CoursePage';
 import { SessionPage } from '@/pages/SessionPage';
 import { ArtifactPage } from '@/pages/ArtifactPage';
+import { ExamPrepPage } from '@/pages/ExamPrepPage';
 
 export default function App() {
   const init = useAuthStore(s => s.init);
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="/courses/:id" element={<CoursePage />} />
+        <Route path="/courses/:id/exam-prep" element={<ExamPrepPage />} />
         <Route path="/sessions/:id" element={<SessionPage />} />
         <Route path="/artifacts/:id" element={<ArtifactPage />} />
       </Route>

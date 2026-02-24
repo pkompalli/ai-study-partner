@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, GraduationCap, BookOpen } from 'lucide-react';
+import { ArrowLeft, GraduationCap, BookOpen, ClipboardList } from 'lucide-react';
 import { useCourseStore } from '@/store/courseStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useUIStore } from '@/store/uiStore';
@@ -55,15 +55,29 @@ export function CoursePage() {
               : <BookOpen className="h-5 w-5 text-primary-600" />
             }
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold text-gray-900">{activeCourse.name}</h1>
             {activeCourse.description && (
               <p className="text-sm text-gray-500 mt-0.5">{activeCourse.description}</p>
             )}
-            <span className="inline-flex mt-1 items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700">
-              {activeCourse.goal === 'exam_prep' ? 'Exam Prep' : 'Classwork'}
-            </span>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700">
+                {activeCourse.goal === 'exam_prep' ? 'Exam Prep' : 'Classwork'}
+              </span>
+              {activeCourse.exam_name && (
+                <span className="text-xs text-gray-400">{activeCourse.exam_name}</span>
+              )}
+            </div>
           </div>
+          {activeCourse.goal === 'exam_prep' && (
+            <button
+              onClick={() => navigate(`/courses/${id}/exam-prep`)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary-50 text-primary-700 text-sm font-medium hover:bg-primary-100 transition-colors flex-shrink-0"
+            >
+              <ClipboardList className="h-4 w-4" />
+              Exam Prep
+            </button>
+          )}
         </div>
       </div>
 

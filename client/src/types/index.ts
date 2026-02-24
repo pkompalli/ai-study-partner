@@ -130,3 +130,93 @@ export interface TopicProgress {
   sessions_count: number;
   last_studied?: string;
 }
+
+// ─── Exam Prep ────────────────────────────────────────────────────────────────
+
+export interface ExamSection {
+  id: string;
+  exam_format_id: string;
+  name: string;
+  question_type: 'mcq' | 'short_answer' | 'long_answer' | 'data_analysis' | 'calculation';
+  num_questions: number;
+  marks_per_question?: number;
+  total_marks?: number;
+  instructions?: string;
+  sort_order: number;
+}
+
+export interface ExamFormat {
+  id: string;
+  course_id: string;
+  name: string;
+  description?: string;
+  total_marks?: number;
+  time_minutes?: number;
+  instructions?: string;
+  created_at: string;
+  sections: ExamSection[];
+  question_count: number;
+}
+
+export interface MarkCriterion {
+  label: string;
+  description?: string;
+  marks: number;
+}
+
+export interface ExamQuestion {
+  id: string;
+  exam_format_id: string;
+  section_id: string;
+  section_name: string;
+  section_question_type: string;
+  topic_id?: string;
+  topic_name?: string;
+  course_id: string;
+  question_text: string;
+  dataset?: string;
+  options?: string[];
+  correct_option_index?: number;
+  max_marks: number;
+  mark_scheme: MarkCriterion[];
+  depth: number;
+}
+
+export interface ExamAttempt {
+  id: string;
+  exam_format_id: string;
+  mode: 'practice' | 'exam';
+  started_at: string;
+  submitted_at?: string;
+  total_score?: number;
+  max_score?: number;
+  answers: AttemptAnswer[];
+}
+
+export interface AttemptAnswer {
+  id: string;
+  attempt_id: string;
+  question_id: string;
+  answer_text?: string;
+  hints_used: number;
+  score?: number;
+  feedback?: string;
+  marked_at?: string;
+}
+
+export interface LocalAnswerState {
+  answerText: string;
+  selectedOptionIndex?: number;
+  hintsUsed: number;
+  score?: number;
+  feedback?: string;
+  marked: boolean;
+}
+
+export interface TopicReadiness {
+  topic_id: string;
+  topic_name: string;
+  questions_attempted: number;
+  questions_correct: number;
+  readiness_score: number;
+}

@@ -13,6 +13,7 @@ import coursesRouter from './routes/courses.routes.js';
 import sessionsRouter from './routes/sessions.routes.js';
 import artifactsRouter from './routes/artifacts.routes.js';
 import quizzesRouter from './routes/quizzes.routes.js';
+import examPrepRouter from './routes/examPrep.routes.js';
 
 // Ensure uploads dir exists
 const uploadsDir = path.resolve(env.UPLOADS_DIR);
@@ -36,6 +37,7 @@ app.use('/api/courses', coursesRouter);
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/artifacts', artifactsRouter);
 app.use('/api/quizzes', quizzesRouter);
+app.use('/api/exam', examPrepRouter);
 
 app.use(errorHandler);
 

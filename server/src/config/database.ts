@@ -158,6 +158,72 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(user_id, topic_id, question)
   );
+
+  CREATE TABLE IF NOT EXISTS exam_formats (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    description TEXT,
+    total_marks INTEGER,
+    time_minutes INTEGER,
+    instructions TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_sections (
+    id TEXT PRIMARY KEY,
+    exam_format_id TEXT NOT NULL REFERENCES exam_formats(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    question_type TEXT NOT NULL DEFAULT 'short_answer',
+    num_questions INTEGER NOT NULL DEFAULT 5,
+    marks_per_question REAL,
+    total_marks INTEGER,
+    instructions TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_questions (
+    id TEXT PRIMARY KEY,
+    exam_format_id TEXT NOT NULL REFERENCES exam_formats(id) ON DELETE CASCADE,
+    section_id TEXT NOT NULL REFERENCES exam_sections(id) ON DELETE CASCADE,
+    topic_id TEXT REFERENCES topics(id) ON DELETE SET NULL,
+    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    question_text TEXT NOT NULL,
+    dataset TEXT,
+    options TEXT,
+    correct_option_index INTEGER,
+    max_marks REAL NOT NULL DEFAULT 1,
+    mark_scheme TEXT NOT NULL DEFAULT '[]',
+    depth INTEGER NOT NULL DEFAULT 3,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_attempts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    exam_format_id TEXT NOT NULL REFERENCES exam_formats(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL DEFAULT 'practice',
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    submitted_at TEXT,
+    total_score REAL,
+    max_score REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS exam_attempt_answers (
+    id TEXT PRIMARY KEY,
+    attempt_id TEXT NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
+    question_id TEXT NOT NULL REFERENCES exam_questions(id) ON DELETE CASCADE,
+    answer_text TEXT,
+    hints_used INTEGER NOT NULL DEFAULT 0,
+    score REAL,
+    feedback TEXT,
+    marked_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(attempt_id, question_id)
+  );
 `);
 
 // Additive migrations — safe to run on existing databases
