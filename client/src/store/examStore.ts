@@ -73,6 +73,8 @@ interface ExamState {
   // Session exam tab (in-session, no attempt tracking)
   sessionBankAll: ExamQuestion[];
   sessionBatch: ExamQuestion[];
+  sessionHints: Record<string, { text: string; count: number }>;
+  sessionHintLoading: string | null; // questionId currently loading
   sessionBankOffset: number;
   sessionAnswers: Record<string, { answerText: string; selectedOptionIndex?: number; score?: number; feedback?: string; marked: boolean }>;
   sessionMarkingId: string | null;
@@ -142,6 +144,8 @@ interface ExamState {
   setSessionAnswerText: (questionId: string, text: string) => void;
   setSessionSelectedOption: (questionId: string, index: number) => void;
   submitSessionAnswer: (questionId: string, files?: File[]) => Promise<void>;
+  fetchSessionHint: (questionId: string, answerText?: string) => Promise<void>;
+  clearSessionHint: (questionId: string) => void;
   setExamDifficulty: (d: number) => void;
   clearSessionExam: () => void;
 }
@@ -169,6 +173,8 @@ export const useExamStore = create<ExamState>((set, get) => ({
   sessionBatch: [],
   sessionBankOffset: 0,
   sessionAnswers: {},
+  sessionHints: {},
+  sessionHintLoading: null,
   sessionMarkingId: null,
   sessionBatchLoading: false,
   sessionBatchGenerating: false,
@@ -547,6 +553,36 @@ export const useExamStore = create<ExamState>((set, get) => ({
     }
   },
 
+  fetchSessionHint: async (questionId, answerText) => {
+    const { sessionHints } = get();
+    const current = sessionHints[questionId];
+    const hintsUsed = current?.count ?? 0;
+    if (hintsUsed >= 2) return;
+    set({ sessionHintLoading: questionId });
+    try {
+      const { data } = await api.post<{ hint: string }>('/api/exam/hint', {
+        questionId, answerText, hintsUsed,
+      });
+      set(state => ({
+        sessionHints: {
+          ...state.sessionHints,
+          [questionId]: { text: data.hint, count: hintsUsed + 1 },
+        },
+        sessionHintLoading: null,
+      }));
+    } catch {
+      set({ sessionHintLoading: null });
+    }
+  },
+
+  clearSessionHint: (questionId) => {
+    set(state => {
+      const next = { ...state.sessionHints };
+      delete next[questionId];
+      return { sessionHints: next };
+    });
+  },
+
   setExamDifficulty: (d) => set({ examDifficulty: Math.max(1, Math.min(5, d)) }),
 
   clearSessionExam: () => set({
@@ -554,6 +590,8 @@ export const useExamStore = create<ExamState>((set, get) => ({
     sessionBatch: [],
     sessionBankOffset: 0,
     sessionAnswers: {},
+    sessionHints: {},
+    sessionHintLoading: null,
     sessionMarkingId: null,
   }),
 

@@ -6,7 +6,7 @@ import {
   listFormats, createFormat, getFormat, patchFormat, putFormat, removeFormat,
   inferFormat,
   generateQuestions, listQuestions, clearQuestions,
-  generateBatchHandler, markStandaloneHandler,
+  generateBatchHandler, markStandaloneHandler, getHintStandaloneHandler,
   startAttempt, getAttemptHandler, submitAnswerHandler, getHintHandler, submitAttemptHandler,
   getReadiness,
   extractPaperHandler, importExtractedHandler,
@@ -33,9 +33,9 @@ router.post('/formats/:id/questions/batch',  requireAuth, llmLimiter, generateBa
 router.get('/formats/:id/questions',         requireAuth, listQuestions);
 router.delete('/formats/:id/questions',      requireAuth, clearQuestions);
 
-// Standalone marking (session tab — no attempt required)
-// accepts optional image/PDF uploads (student's handwritten answer)
+// Standalone marking + hints (session practice tab — no attempt required)
 router.post('/mark', requireAuth, llmLimiter, upload.array('files', 10), markStandaloneHandler);
+router.post('/hint', requireAuth, llmLimiter, getHintStandaloneHandler);
 
 // Attempts
 router.post('/attempts',           requireAuth, startAttempt);

@@ -36,7 +36,9 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
 function ExamPrepTab({
   formats, sessionBatch, sessionAnswers, sessionMarkingId,
   sessionBatchLoading, sessionBatchGenerating, examDifficulty,
+  sessionHints, sessionHintLoading,
   onLoadBatch, onLoadMore, onSetAnswerText, onSetOption, onSubmit, onRefreshBatch, onNavigateSettings,
+  onFetchHint, onClearHint,
 }: {
   formats: import('@/types').ExamFormat[];
   sessionBatch: ExamQuestion[];
@@ -45,6 +47,8 @@ function ExamPrepTab({
   sessionBatchLoading: boolean;
   sessionBatchGenerating: boolean;
   examDifficulty: number;
+  sessionHints: Record<string, { text: string; count: number }>;
+  sessionHintLoading: string | null;
   onLoadBatch: (formatId: string) => void;
   onLoadMore: (formatId: string) => void;
   onSetAnswerText: (qId: string, text: string) => void;
@@ -52,6 +56,8 @@ function ExamPrepTab({
   onSubmit: (qId: string, files?: File[]) => void;
   onRefreshBatch: (formatId: string, difficulty: number) => void;
   onNavigateSettings: () => void;
+  onFetchHint: (qId: string, answerText?: string) => void;
+  onClearHint: (qId: string) => void;
 }) {
   const format = formats[0] ?? null;
   const allAnswered = sessionBatch.length > 0 && sessionBatch.every(q => sessionAnswers[q.id]?.marked);
@@ -128,9 +134,13 @@ function ExamPrepTab({
             index={qi}
             localAnswer={sessionAnswers[question.id] ?? { answerText: '', marked: false }}
             isMarking={sessionMarkingId === question.id}
+            hint={sessionHints[question.id]}
+            isHintLoading={sessionHintLoading === question.id}
             onSetText={(t) => onSetAnswerText(question.id, t)}
             onSetOption={(i) => onSetOption(question.id, i)}
             onSubmit={(files) => onSubmit(question.id, files)}
+            onFetchHint={(answerText) => onFetchHint(question.id, answerText)}
+            onClearHint={() => onClearHint(question.id)}
           />
         ))}
       </div>
@@ -139,15 +149,20 @@ function ExamPrepTab({
 }
 
 function ExamQuestionCard({
-  question, index, localAnswer, isMarking, onSetText, onSetOption, onSubmit,
+  question, index, localAnswer, isMarking, hint, isHintLoading,
+  onSetText, onSetOption, onSubmit, onFetchHint, onClearHint,
 }: {
   question: ExamQuestion;
   index: number;
   localAnswer: { answerText: string; selectedOptionIndex?: number; score?: number; feedback?: string; marked: boolean };
   isMarking: boolean;
+  hint?: { text: string; count: number };
+  isHintLoading: boolean;
   onSetText: (t: string) => void;
   onSetOption: (i: number) => void;
   onSubmit: (files?: File[]) => void;
+  onFetchHint: (answerText?: string) => void;
+  onClearHint: () => void;
 }) {
   const [answerFiles, setAnswerFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -278,16 +293,39 @@ function ExamQuestionCard({
           </div>
         )}
 
-        {/* Submit */}
+        {/* Hint display */}
+        {hint && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 relative">
+            <button onClick={onClearHint} className="absolute top-2 right-2 text-amber-300 hover:text-amber-500">
+              <XCircle className="h-3.5 w-3.5" />
+            </button>
+            <div className="flex items-start gap-2 pr-5">
+              <Lightbulb className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">{hint.text}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Submit + Hint row */}
         {!isMarked && (
-          <button
-            onClick={() => onSubmit(answerFiles.length > 0 ? answerFiles : undefined)}
-            disabled={isMarking || !canSubmit}
-            className="w-full py-2 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
-          >
-            {isMarking ? <Spinner className="h-3 w-3" /> : null}
-            Submit Answer
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onFetchHint(localAnswer.answerText || undefined)}
+              disabled={isHintLoading || (hint?.count ?? 0) >= 2}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors flex-shrink-0"
+            >
+              {isHintLoading ? <Spinner className="h-3 w-3" /> : <Lightbulb className="h-3 w-3 text-amber-500" />}
+              {(hint?.count ?? 0) > 0 ? `Hint (${hint!.count}/2)` : 'Hint'}
+            </button>
+            <button
+              onClick={() => onSubmit(answerFiles.length > 0 ? answerFiles : undefined)}
+              disabled={isMarking || !canSubmit}
+              className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+            >
+              {isMarking ? <Spinner className="h-3 w-3" /> : null}
+              Submit Answer
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -314,8 +352,10 @@ export function SessionPage() {
     formats, fetchFormats,
     sessionBatch, sessionBatchLoading, sessionBatchGenerating,
     sessionAnswers, sessionMarkingId, examDifficulty,
+    sessionHints, sessionHintLoading,
     loadSessionBatch, loadMoreSessionBatch, refreshBatchAtDifficulty,
     setSessionAnswerText, setSessionSelectedOption, submitSessionAnswer,
+    fetchSessionHint, clearSessionHint,
     clearSessionExam,
   } = useExamStore();
 
@@ -573,6 +613,8 @@ export function SessionPage() {
               sessionBatchLoading={sessionBatchLoading}
               sessionBatchGenerating={sessionBatchGenerating}
               examDifficulty={examDifficulty}
+              sessionHints={sessionHints}
+              sessionHintLoading={sessionHintLoading}
               onLoadBatch={handleLoadExamBatch}
               onLoadMore={(formatId) => loadMoreSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id)}
               onSetAnswerText={setSessionAnswerText}
@@ -580,6 +622,8 @@ export function SessionPage() {
               onSubmit={(qId, files) => submitSessionAnswer(qId, files)}
               onRefreshBatch={handleRefreshBatch}
               onNavigateSettings={() => navigate(`/courses/${activeSession?.course_id}/settings`)}
+              onFetchHint={(qId, answerText) => fetchSessionHint(qId, answerText)}
+              onClearHint={clearSessionHint}
             />
           )}
         </div>

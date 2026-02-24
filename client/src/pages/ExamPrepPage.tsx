@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, GraduationCap, Plus, Trash2, Play, RefreshCw,
-  ChevronRight, Lightbulb, X, CheckCircle2, XCircle,
+  ChevronRight, X, CheckCircle2, XCircle,
   BookOpen, Zap, BarChart2, Upload, FileText, AlertCircle, ImageIcon, Pencil,
 } from 'lucide-react';
 import { useCourseStore } from '@/store/courseStore';
@@ -572,8 +572,8 @@ function ReadinessPanel({ courseId }: { courseId: string }) {
 function PracticeSession() {
   const {
     questions, currentQuestionIndex, answers,
-    setAnswerText, setSelectedOption, submitAnswer, fetchHint, clearHint,
-    nextQuestion, exitPractice, markingQuestionId, hintLoading, currentHint,
+    setAnswerText, setSelectedOption, submitAnswer,
+    nextQuestion, exitPractice, markingQuestionId,
     practiceComplete,
   } = useExamStore();
 
@@ -652,19 +652,6 @@ function PracticeSession() {
           {/* Question text */}
           <p className="text-gray-900 font-medium leading-relaxed">{question.question_text}</p>
 
-          {/* Mark scheme (non-MCQ, shown before answering) */}
-          {!isMcq && !isMarked && question.mark_scheme.length > 0 && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Mark scheme ({question.max_marks} marks)</p>
-              {question.mark_scheme.map((c, i) => (
-                <div key={i} className="text-xs text-amber-800 flex items-start gap-1.5">
-                  <span className="font-medium flex-shrink-0">[{c.marks}m]</span>
-                  <span>{c.label}{c.description ? ` — ${c.description}` : ''}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Answer input */}
           {isMcq ? (
             <div className="space-y-2">
@@ -709,19 +696,6 @@ function PracticeSession() {
             />
           )}
 
-          {/* Hint */}
-          {currentHint && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 relative">
-              <button onClick={clearHint} className="absolute top-2 right-2 text-blue-300 hover:text-blue-500">
-                <X className="h-3.5 w-3.5" />
-              </button>
-              <div className="flex items-start gap-2">
-                <Lightbulb className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-800 leading-relaxed">{currentHint}</p>
-              </div>
-            </div>
-          )}
-
           {/* Marking feedback */}
           {isMarked && (
             <div className={`rounded-xl p-4 space-y-2 ${localAnswer.score! >= question.max_marks ? 'bg-green-50 border border-green-200' : localAnswer.score! > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-red-50 border border-red-200'}`}>
@@ -745,16 +719,6 @@ function PracticeSession() {
 
         {/* Action bar */}
         <div className="px-5 pb-4 flex items-center gap-2">
-          {!isMarked && (
-            <button
-              onClick={() => fetchHint(question.id)}
-              disabled={hintLoading || localAnswer.hintsUsed >= 2}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-            >
-              {hintLoading ? <Spinner className="h-3.5 w-3.5" /> : <Lightbulb className="h-3.5 w-3.5 text-amber-500" />}
-              Hint {localAnswer.hintsUsed > 0 ? `(${localAnswer.hintsUsed}/2)` : ''}
-            </button>
-          )}
           {!isMarked && (
             <button
               onClick={() => submitAnswer(question.id)}

@@ -264,6 +264,28 @@ export async function submitAnswerHandler(req: Request, res: Response, next: Nex
   } catch (err) { next(err); }
 }
 
+/** Standalone hint — no attempt required, used by the session practice tab */
+export async function getHintStandaloneHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { questionId, answerText, hintsUsed = 0 } = req.body as {
+      questionId: string; answerText?: string; hintsUsed?: number;
+    };
+
+    const question = getExamQuestionById(questionId);
+    if (!question) { res.status(404).json({ error: 'Question not found' }); return; }
+
+    const hint = await getHint({
+      questionText: question.question_text,
+      questionType: question.section_question_type,
+      dataset: question.dataset,
+      studentAnswer: answerText,
+      hintsUsed,
+    });
+
+    res.json({ hint });
+  } catch (err) { next(err); }
+}
+
 export async function getHintHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const userId = req.user!.id;
