@@ -18,8 +18,15 @@ import { InlineFlashcards } from './InlineFlashcards';
 function preprocessLatex(content: string): string {
   if (!content) return content;
 
-  // Step 1: convert \[...\] and \(...\) BEFORE markdown can strip the backslashes
+  // Pre-step: normalize commands KaTeX doesn't support → supported equivalents
+  // \cdotp (punctuation cdot) is not in KaTeX; replace with \cdot globally
   let s = content
+    .replace(/\\cdotp/g, '\\cdot')
+    // \boldsymbol not always available → \mathbf (safe fallback)
+    .replace(/\\boldsymbol\{/g, '\\mathbf{');
+
+  // Step 1: convert \[...\] and \(...\) BEFORE markdown can strip the backslashes
+  s = s
     .replace(/\\\[([\s\S]*?)\\\]/g, (_, body) => `$$${body}$$`)
     .replace(/\\\(([\s\S]*?)\\\)/g, (_, body) => `$${body}$`);
 

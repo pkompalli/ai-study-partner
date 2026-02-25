@@ -163,7 +163,7 @@ Quality requirements:
 - For calculation questions: include every piece of data the student needs; state units
 - For data analysis: dataset must have ≥4 data points; question must require processing the data (not just reading it off)
 
-Notation: use LaTeX for all math and chemistry. Inline math: $...$, display math: $$...$$ (for equations on their own line). NEVER use \\begin{align*}, \\begin{equation}, \\begin{aligned}, \\begin{array}, or any \\begin{}...\\end{} LaTeX environments — use $$...$$ for display math instead. Chemical formulas/equations MUST use \\ce{} INSIDE dollar signs: $\\ce{H2SO4}$, $\\ce{Ca^{2+}}$, $\\ce{2H2 + O2 -> 2H2O}$. ALL LaTeX — including \\ce{}, superscripts ^{}, subscripts _{}, Greek letters, units like \\mathrm{} — MUST be inside $...$ or $$...$$ delimiters. NEVER write bare LaTeX without $ delimiters.
+Notation: use LaTeX for all math and chemistry. Inline math: $...$, display math: $$...$$ (for equations on their own line). NEVER use \\begin{align*}, \\begin{equation}, \\begin{aligned}, \\begin{array}, or any \\begin{}...\\end{} LaTeX environments — use $$...$$ for display math instead. Chemical formulas/equations MUST use \\ce{} INSIDE dollar signs: $\\ce{H2SO4}$, $\\ce{Ca^{2+}}$, $\\ce{2H2 + O2 -> 2H2O}$. ALL LaTeX — including \\ce{}, superscripts ^{}, subscripts _{}, Greek letters, units like \\mathrm{} — MUST be inside $...$ or $$...$$ delimiters. NEVER write bare LaTeX without $ delimiters. Use \\cdot (NOT \\cdotp) for multiplication dots and unit separators, e.g. $\\mathrm{J\\,mol^{-1}\\,K^{-1}}$.
 
 Return ONLY valid JSON — no markdown, no code fences:
 {
@@ -272,7 +272,7 @@ Write a complete model answer that:
 - For essays/long-answer: structured paragraphs covering all assessment objectives
 - Uses correct scientific/mathematical terminology throughout
 
-Use LaTeX for all mathematical notation (inline: $...$, display: $$...$$). NEVER use \\begin{align*}, \\begin{equation}, or any \\begin{}...\\end{} environments — use $$...$$ for display math instead. Use $\\ce{}$ for chemical formulas and equations.
+Use LaTeX for all mathematical notation (inline: $...$, display: $$...$$). NEVER use \\begin{align*}, \\begin{equation}, or any \\begin{}...\\end{} environments — use $$...$$ for display math instead. Use $\\ce{}$ for chemical formulas and equations. Use \\cdot (NOT \\cdotp) for multiplication dots and unit separators. ALL units must be inside $...$, e.g. $\\mathrm{J\\,mol^{-1}\\,K^{-1}}$.
 
 Respond with the complete answer only — no preamble.`;
 }

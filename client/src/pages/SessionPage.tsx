@@ -27,8 +27,12 @@ const DIFFICULTY_LABELS: Record<number, string> = {
  */
 function preprocessLatex(content: string): string {
   if (!content) return content;
-  // Step 1: convert \[...\] → $$...$$ and \(...\) → $...$ before markdown strips backslashes
+  // Pre-step: normalize commands KaTeX doesn't support → supported equivalents
   let s = content
+    .replace(/\\cdotp/g, '\\cdot')
+    .replace(/\\boldsymbol\{/g, '\\mathbf{');
+  // Step 1: convert \[...\] → $$...$$ and \(...\) → $...$ before markdown strips backslashes
+  s = s
     .replace(/\\\[([\s\S]*?)\\\]/g, (_, body) => `$$${body}$$`)
     .replace(/\\\(([\s\S]*?)\\\)/g, (_, body) => `$${body}$`);
   // Step 2: protect already-valid $...$ / $$...$$ blocks from double-processing
