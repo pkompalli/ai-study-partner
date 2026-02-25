@@ -13,15 +13,15 @@ export function ToastContainer() {
   const { toasts, removeToast } = useUIStore();
 
   return (
-    <div className="fixed bottom-20 right-4 z-50 flex flex-col gap-2 md:bottom-4">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
       {toasts.map(toast => (
         <div
           key={toast.id}
           className={cn(
-            'flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg bg-white border min-w-[280px] max-w-sm',
-            toast.type === 'success' && 'border-green-200',
-            toast.type === 'error' && 'border-red-200',
-            toast.type === 'info' && 'border-blue-200'
+            'flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium border min-w-[280px] max-w-sm',
+            toast.type === 'success' && 'bg-green-50 text-green-800 border-green-200',
+            toast.type === 'error' && 'bg-red-50 text-red-800 border-red-200',
+            toast.type === 'info' && 'bg-white text-gray-800 border-gray-200'
           )}
         >
           {icons[toast.type]}

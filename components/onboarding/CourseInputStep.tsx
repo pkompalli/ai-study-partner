@@ -43,10 +43,10 @@ export function CourseInputStep({ onNext }: CourseInputStepProps) {
             key={opt.type}
             onClick={() => { setSourceType(opt.type); setFile(undefined); }}
             className={cn(
-              'flex flex-col items-center gap-2 p-3 rounded-xl border-2 text-sm font-medium transition-colors',
+              'flex flex-col items-center gap-2 p-3 rounded-xl border text-sm font-medium transition-all',
               sourceType === opt.type
-                ? 'border-primary-500 bg-primary-50 text-primary-700'
-                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                ? 'border-primary-600 bg-primary-50 text-primary-700'
+                : 'border-gray-200 text-gray-600 hover:border-primary-500 hover:bg-primary-50'
             )}
           >
             {opt.icon}
@@ -60,7 +60,7 @@ export function CourseInputStep({ onNext }: CourseInputStepProps) {
           value={text}
           onChange={e => setText(e.target.value)}
           placeholder="Paste your course syllabus, notes, or any educational content here..."
-          className="w-full h-48 px-3 py-2 rounded-lg border border-gray-300 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full h-48 px-3.5 py-2.5 rounded-lg border border-gray-300 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       ) : sourceType === 'image' ? (
         <FileDropzone

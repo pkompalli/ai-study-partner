@@ -33,7 +33,7 @@ export function QuizCard({ questions, onSubmit }: QuizCardProps) {
   if (result) {
     const pct = Math.round((result.score / result.total) * 100);
     return (
-      <div className="p-4 space-y-4">
+      <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm space-y-4">
         <div className="text-center">
           <div className={cn('text-4xl font-bold mb-1', pct >= 80 ? 'text-green-600' : pct >= 60 ? 'text-yellow-600' : 'text-red-600')}>
             {result.score}/{result.total}
@@ -48,7 +48,7 @@ export function QuizCard({ questions, onSubmit }: QuizCardProps) {
             const userAnswer = answers[q.id];
             const correct = userAnswer === q.correctIndex;
             return (
-              <div key={q.id} className={cn('p-3 rounded-xl border', correct ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50')}>
+              <div key={q.id} className={cn('p-3 rounded-xl border', correct ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-400 text-red-800')}>
                 <div className="flex items-start gap-2">
                   {correct ? <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" /> : <XCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />}
                   <div>
@@ -65,18 +65,18 @@ export function QuizCard({ questions, onSubmit }: QuizCardProps) {
   }
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm space-y-4">
       {/* Progress */}
       <div className="flex items-center justify-between text-xs text-gray-500">
         <span>Question {current + 1} of {questions.length}</span>
         <span>{Object.keys(answers).length} answered</span>
       </div>
-      <div className="h-1.5 bg-gray-200 rounded-full">
+      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div className="h-full bg-primary-500 rounded-full transition-all" style={{ width: `${((current + 1) / questions.length) * 100}%` }} />
       </div>
 
       {/* Question */}
-      <p className="text-sm font-semibold text-gray-900">{question.question}</p>
+      <p className="font-medium text-gray-900 text-sm leading-relaxed">{question.question}</p>
 
       {/* Options */}
       <div className="space-y-2">
@@ -87,8 +87,8 @@ export function QuizCard({ questions, onSubmit }: QuizCardProps) {
               key={idx}
               onClick={() => setAnswers(prev => ({ ...prev, [question.id]: idx }))}
               className={cn(
-                'w-full text-left px-4 py-3 rounded-xl border-2 text-sm transition-colors',
-                selected ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 hover:border-gray-300'
+                'w-full text-left border rounded-lg px-4 py-3 text-sm transition-all',
+                selected ? 'border-primary-400 bg-primary-50 text-primary-700 hover:border-primary-400 hover:bg-primary-50' : 'border-gray-200 text-gray-700 hover:border-primary-400 hover:bg-primary-50'
               )}
             >
               <span className="font-medium mr-2">{String.fromCharCode(65 + idx)}.</span>

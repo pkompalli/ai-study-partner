@@ -30,15 +30,15 @@ export function GoalStep({ onNext }: GoalStepProps) {
             key={opt.value}
             onClick={() => setGoal(opt.value as 'exam_prep' | 'classwork')}
             className={cn(
-              'flex flex-col gap-2 p-4 rounded-xl border-2 text-left transition-colors',
+              'flex flex-col gap-2 p-4 rounded-xl border text-left transition-all',
               goal === opt.value
-                ? 'border-primary-500 bg-primary-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-primary-600 bg-primary-50'
+                : 'border-gray-200 hover:border-primary-500 hover:bg-primary-50'
             )}
           >
             <div className={cn('text-gray-600', goal === opt.value && 'text-primary-600')}>{opt.icon}</div>
-            <p className={cn('font-medium text-gray-900', goal === opt.value && 'text-primary-700')}>{opt.label}</p>
-            <p className="text-xs text-gray-500">{opt.desc}</p>
+            <p className={cn('font-semibold text-gray-900', goal === opt.value && 'text-primary-700')}>{opt.label}</p>
+            <p className="text-sm text-gray-500">{opt.desc}</p>
           </button>
         ))}
       </div>

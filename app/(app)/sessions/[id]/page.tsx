@@ -764,14 +764,14 @@ export default function SessionPage() {
                 </div>
               </div>
               {showExplore && (
-                <div className="border-t border-sky-100 bg-sky-50 px-4 py-2.5 flex-shrink-0">
-                  <p className="text-xs font-semibold text-sky-700 mb-2 flex items-center gap-1">
+                <div className="border-t border-gray-100 bg-primary-50 px-4 py-2.5 flex-shrink-0">
+                  <p className="text-xs font-semibold text-primary-700 mb-2 flex items-center gap-1">
                     <Compass className="h-3 w-3" /> Explore
                   </p>
                   <div className="grid grid-cols-3 gap-2">
                     {exploreItems.map((item, i) => (
                       <button key={i} onClick={() => handleSend(item)}
-                        className="px-3 py-2 rounded-lg text-xs font-medium bg-white border border-sky-200 text-sky-800 hover:bg-sky-100 transition-colors text-center leading-snug">
+                        className="px-3 py-2 rounded-lg text-xs font-medium bg-white border border-primary-200 text-primary-800 hover:bg-primary-100 transition-colors text-center leading-snug">
                         {item}
                       </button>
                     ))}

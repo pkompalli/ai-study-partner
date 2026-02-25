@@ -49,7 +49,7 @@ export function ChatInput({ onSend, disabled, placeholder = 'Ask a question...' 
           disabled={disabled}
           rows={1}
           className={cn(
-            'flex-1 resize-none rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500',
+            'flex-1 resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent',
             'min-h-[44px] max-h-[120px] disabled:bg-gray-50'
           )}
         />
@@ -57,7 +57,7 @@ export function ChatInput({ onSend, disabled, placeholder = 'Ask a question...' 
           onClick={() => handleSend()}
           disabled={disabled || !value.trim()}
           className={cn(
-            'h-11 w-11 rounded-xl flex items-center justify-center transition-colors flex-shrink-0',
+            'rounded-lg flex items-center justify-center transition-colors flex-shrink-0 p-2',
             value.trim() && !disabled
               ? 'bg-primary-600 text-white hover:bg-primary-700'
               : 'bg-gray-100 text-gray-400 cursor-not-allowed'

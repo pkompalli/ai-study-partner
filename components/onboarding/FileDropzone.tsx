@@ -55,8 +55,8 @@ export function FileDropzone({
     <div className="space-y-3">
       <div
         className={cn(
-          'relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-colors',
-          dragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
+          'relative border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer transition-all text-center',
+          dragging ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-400 hover:bg-primary-50/30'
         )}
         onDragOver={e => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
@@ -74,12 +74,12 @@ export function FileDropzone({
         <Upload className="h-8 w-8 text-gray-400" />
         {multiple ? (
           <>
-            <p className="text-sm font-medium text-gray-700">Drop images here or click to select</p>
+            <p className="text-sm text-gray-500">Drop images here or <span className="text-primary-600 font-medium">click to select</span></p>
             <p className="text-xs text-gray-500">Select multiple JPG/PNG images — max 20 MB each</p>
           </>
         ) : (
           <>
-            <p className="text-sm font-medium text-gray-700">Drop file here or click to upload</p>
+            <p className="text-sm text-gray-500">Drop file here or <span className="text-primary-600 font-medium">click to upload</span></p>
             <p className="text-xs text-gray-500">PDF, PNG, JPG, JSON — max 20 MB</p>
           </>
         )}

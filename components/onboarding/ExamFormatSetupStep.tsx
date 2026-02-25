@@ -21,7 +21,7 @@ function SectionRow({ section, onChange, onDelete }: {
   onDelete: (key: string) => void;
 }) {
   return (
-    <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+    <div className="flex items-start gap-2 p-4 bg-white rounded-xl border border-gray-200 hover:border-primary-400 transition-all">
       <div className="flex-1 grid grid-cols-2 gap-2 text-sm">
         <input className="col-span-2 border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
           placeholder="Section name (e.g. Section A – Multiple Choice)"
@@ -73,7 +73,7 @@ function FormatSummaryCard({ name, sections, totalMarks, timeMinutes, questionCo
         <p className="text-sm text-gray-500 mt-1">Confirm this looks right before locking it in.</p>
       </div>
 
-      <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
         <div className="flex items-start gap-3">
           <div className="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
             <GraduationCap className="h-4 w-4 text-primary-600" />
@@ -281,7 +281,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
 
               {!paperExtracting && (
                 <label
-                  className={`block border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors ${dragOver ? 'border-primary-400 bg-primary-50' : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'}`}
+                  className={`block border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${dragOver ? 'border-primary-500 bg-primary-50' : 'border-gray-300 hover:border-primary-400 hover:bg-primary-50/30'}`}
                   onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                   onDragLeave={() => setDragOver(false)}
                   onDrop={e => { e.preventDefault(); setDragOver(false); handleStageFiles(e.dataTransfer.files); }}>
@@ -335,7 +335,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
           {activeTab === 'manual' && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Exam name</label>
+                <label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Exam name</label>
                 <div className="flex gap-2">
                   <input className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
                     placeholder="e.g. A-Level Chemistry, SAT Math, IB Biology"
@@ -355,7 +355,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Sections</label>
+                  <label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Sections</label>
                   <button onClick={handleAddSection} className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-800">
                     <Plus className="h-3 w-3" /> Add section
                   </button>

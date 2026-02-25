@@ -8,8 +8,10 @@ interface ArtifactViewerProps {
 
 export function ArtifactViewer({ artifact }: ArtifactViewerProps) {
   return (
-    <article className="prose prose-sm sm:prose max-w-none">
-      <ReactMarkdown>{artifact.markdown_content}</ReactMarkdown>
-    </article>
+    <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+      <article className="prose prose-gray max-w-none p-6">
+        <ReactMarkdown>{artifact.markdown_content}</ReactMarkdown>
+      </article>
+    </div>
   );
 }

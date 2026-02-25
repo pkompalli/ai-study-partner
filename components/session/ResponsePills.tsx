@@ -16,7 +16,7 @@ export function ResponsePills({ followupPills, onSelect, disabled }: ResponsePil
           key={i}
           onClick={() => onSelect(pill)}
           disabled={disabled}
-          className="px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex items-center px-3 py-1.5 rounded-full text-sm border border-gray-200 bg-white text-gray-700 hover:border-primary-400 hover:bg-primary-50 hover:text-primary-700 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {pill}
         </button>

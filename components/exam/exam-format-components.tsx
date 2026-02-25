@@ -255,7 +255,7 @@ export function FormatSetupPanel({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-lg p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
       <div className="flex items-center gap-2">
         <GraduationCap className="h-4 w-4 text-primary-600" />
         <h3 className="font-semibold text-gray-900">Set up Exam Format</h3>
@@ -446,7 +446,7 @@ export function FormatCard({
   const totalSectionMarks = format.sections.reduce((s, sec) => s + (sec.total_marks ?? (sec.marks_per_question ?? 1) * sec.num_questions), 0);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:border-primary-400 hover:shadow-sm transition-all space-y-4">
       <div className="flex items-start gap-3">
         <div className="h-10 w-10 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
           <GraduationCap className="h-5 w-5 text-primary-600" />

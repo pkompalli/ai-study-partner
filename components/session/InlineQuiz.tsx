@@ -17,9 +17,9 @@ export function InlineQuiz({ questions }: { questions: Question[] }) {
   const correct = (qi: number, oi: number) => oi === questions[qi].correct;
 
   return (
-    <div className="my-3 rounded-xl border border-amber-100 bg-amber-50/40 overflow-hidden">
-      <div className="px-4 py-2 border-b border-amber-100 flex items-center gap-2">
-        <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Check your understanding</span>
+    <div className="my-3 rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
+        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Check your understanding</span>
       </div>
       <div className="px-4 py-3 space-y-5">
         {questions.map((q, qi) => (
@@ -35,11 +35,11 @@ export function InlineQuiz({ questions }: { questions: Question[] }) {
                     key={oi}
                     onClick={() => !done && setAnswers(prev => ({ ...prev, [qi]: oi }))}
                     className={cn(
-                      'w-full text-left text-sm px-3 py-2 rounded-lg border transition-colors',
-                      !done && 'border-gray-200 bg-white text-gray-700 hover:border-primary-300 hover:bg-primary-50',
+                      'w-full text-left text-sm px-3 py-3 rounded-lg border transition-all cursor-pointer',
+                      !done && 'border-gray-200 bg-white text-gray-700 hover:border-primary-400 hover:bg-primary-50',
                       done && !selected && !isCorrect && 'border-gray-100 bg-gray-50 text-gray-400',
-                      done && isCorrect && 'border-green-300 bg-green-50 text-green-800',
-                      done && selected && !isCorrect && 'border-red-300 bg-red-50 text-red-700',
+                      done && isCorrect && 'border-green-500 bg-green-50 text-green-800',
+                      done && selected && !isCorrect && 'border-red-400 bg-red-50 text-red-800',
                     )}
                   >
                     <span className="flex items-center gap-2">

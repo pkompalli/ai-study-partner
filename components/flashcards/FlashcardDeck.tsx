@@ -115,27 +115,24 @@ export function FlashcardDeck({ cards, onReview }: FlashcardDeckProps) {
           >
             {/* Front */}
             <div className={cn(
-              'absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-4 text-center',
-              'bg-gradient-to-br from-primary-500 to-primary-700 text-white',
+              'absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-8 text-center min-h-[200px]',
+              'bg-white border border-gray-200 shadow-md',
               '[backface-visibility:hidden]'
             )}>
-              <p className="text-[10px] font-medium opacity-60 mb-2 uppercase tracking-wide">
+              <p className="text-[10px] font-medium text-gray-400 mb-2 uppercase tracking-wide">
                 {cardReviewed ? '—' : 'Tap to reveal'}
               </p>
-              <p className="text-sm font-semibold leading-snug">{card.front}</p>
+              <p className="text-sm font-medium text-gray-900 leading-snug">{card.front}</p>
             </div>
 
             {/* Back */}
             <div className={cn(
-              'absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-4 text-center',
-              'bg-white border-2',
-              cardReviewed
-                ? (reviewed[card.id] ? 'border-green-300' : 'border-red-300')
-                : 'border-primary-200',
+              'absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-8 text-center min-h-[200px]',
+              'bg-primary-50 border border-gray-200 shadow-md',
               '[backface-visibility:hidden] [transform:rotateY(180deg)]'
             )}>
-              <p className="text-[10px] font-medium text-gray-400 mb-2 uppercase tracking-wide">Answer</p>
-              <p className="text-sm text-gray-900 leading-snug">{card.back}</p>
+              <p className="text-[10px] font-medium text-primary-400 mb-2 uppercase tracking-wide">Answer</p>
+              <p className="text-sm text-primary-900 font-medium leading-snug">{card.back}</p>
               {card.mnemonic && (
                 <p className="text-xs text-primary-600 mt-2 italic">💡 {card.mnemonic}</p>
               )}

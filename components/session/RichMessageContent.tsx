@@ -62,7 +62,7 @@ function makeComponents(invert?: boolean): Components {
       if (!lang) {
         // Inline code
         return (
-          <code className={cn('text-xs bg-gray-100 rounded px-1 py-0.5 font-mono', invert && 'bg-white/20')}>
+          <code className={cn('text-xs bg-gray-100 text-gray-800 rounded px-1.5 py-0.5 font-mono', invert && 'bg-white/20')}>
             {children}
           </code>
         );
@@ -94,7 +94,7 @@ function makeComponents(invert?: boolean): Components {
 
       // Standard code block
       return (
-        <pre className="text-xs bg-gray-50 rounded-lg p-3 overflow-x-auto my-2">
+        <pre className="text-xs bg-gray-900 text-green-400 rounded-lg p-3 overflow-x-auto my-2">
           <code className={className}>{children}</code>
         </pre>
       );

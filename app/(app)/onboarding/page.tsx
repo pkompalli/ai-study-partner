@@ -130,7 +130,8 @@ export default function Page() {
   };
 
   return (
-    <div className="max-w-lg mx-auto px-4 py-6">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 w-full max-w-2xl px-6 py-8">
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-8">
         {STEP_LABELS.map((label, idx) => (
@@ -178,6 +179,7 @@ export default function Page() {
           }}
         />
       )}
+      </div>
     </div>
   );
 }

@@ -89,11 +89,11 @@ function CourseCard({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 hover:shadow-md transition-shadow overflow-hidden">
+    <div className="bg-white rounded-2xl border border-gray-100 hover:shadow-md transition-all duration-200 overflow-hidden">
       <div className="p-4">
         <div className="flex items-start gap-3">
           {/* Icon */}
-          <div className="h-9 w-9 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+          <div className="h-10 w-10 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0 mt-0.5">
             {isExamPrep
               ? <GraduationCap className="h-4 w-4 text-primary-600" />
               : <BookOpen className="h-4 w-4 text-primary-600" />

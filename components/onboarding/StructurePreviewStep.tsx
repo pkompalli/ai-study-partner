@@ -42,7 +42,7 @@ export function StructurePreviewStep({ structure, onConfirm, loading }: Structur
         <p className="text-sm text-gray-600 mt-1">AI has extracted this structure. You can edit names before saving.</p>
       </div>
 
-      <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+      <div className="bg-white border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-100">
         {subjects.map((subject, si) => (
           <div key={si}>
             <div className="flex items-center gap-2 px-4 py-3 bg-gray-50">
@@ -70,7 +70,7 @@ export function StructurePreviewStep({ structure, onConfirm, loading }: Structur
                 </div>
               ) : (
                 <>
-                  <span className="flex-1 text-sm font-semibold text-gray-900">{subject.name}</span>
+                  <span className="flex-1 font-semibold text-gray-900">{subject.name}</span>
                   <button onClick={() => startEdit(si, subject.name)} className="text-gray-400 hover:text-gray-600">
                     <Edit3 className="h-3.5 w-3.5" />
                   </button>
@@ -82,7 +82,7 @@ export function StructurePreviewStep({ structure, onConfirm, loading }: Structur
               <div className="divide-y divide-gray-50">
                 {subject.topics.map((topic, ti) => (
                   <div key={ti} className="pl-10 pr-4 py-2">
-                    <p className={cn('text-sm font-medium text-gray-800')}>{topic.name}</p>
+                    <p className={cn('text-sm text-gray-600 hover:bg-gray-50 rounded px-1')}>{topic.name}</p>
                     <div className="mt-1 space-y-0.5">
                       {topic.chapters.map((ch, ci) => (
                         <p key={ci} className="text-xs text-gray-500 pl-4">• {ch.name}</p>

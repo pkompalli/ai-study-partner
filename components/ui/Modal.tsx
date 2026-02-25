@@ -23,9 +23,9 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className={cn('relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto', className)}>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0" onClick={onClose} />
+      <div className={cn('relative bg-white rounded-2xl shadow-xl border border-gray-100 w-full max-w-md max-h-[90vh] overflow-y-auto', className)}>
         {title && (
           <div className="flex items-center justify-between p-4 border-b">
             <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
