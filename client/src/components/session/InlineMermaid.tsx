@@ -17,18 +17,37 @@ const KEYWORDS = new Set([
 // ── Sanitise code before parsing ─────────────────────────────────────────────
 function sanitiseMermaidCode(code: string): string {
   let s = code
+    // Strip display math $$...$$ — keep inner text
     .replace(/\$\$([\s\S]*?)\$\$/g, (_, b) => b.trim())
+    // Strip inline math $...$ — keep inner text
     .replace(/\$([^$\n]+)\$/g, '$1')
+    // Unwrap \ce{...} — keep inner text
     .replace(/\\ce\{([^}]*)\}/g, '$1')
+    // Unwrap other \cmd{content} — keep content
     .replace(/\\[A-Za-z]+\{([^}]*)\}/g, '$1')
+    // Remove bare \commands (\Delta, \alpha, \frac, etc.)
     .replace(/\\[A-Za-z]+/g, '')
-    .replace(/\$/g, '');
+    // Remove any stray $ remaining
+    .replace(/\$/g, '')
+    // Replace Unicode sub/superscripts used in chemical formulas with ASCII
+    .replace(/[₀₁₂₃₄₅₆₇₈₉]/g, d => String('0123456789'['₀₁₂₃₄₅₆₇₈₉'.indexOf(d)]))
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, d => String('0123456789'['⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(d)]))
+    .replace(/[⁺⁻]/g, d => d === '⁺' ? '+' : '-')
+    // Replace equilibrium arrows with plain ASCII arrows mermaid understands
+    .replace(/⇌/g, '<-->').replace(/→/g, '-->').replace(/←/g, '<--');
 
-  // Fix nested [ ] inside rectangular node labels — parser chokes on them
+  // Fix nested [ ] inside rectangular node labels — parser chokes on them.
   // e.g.  C[Increase [H3O+], [OH-]]  →  C[Increase (H3O+), (OH-)]
   s = s.replace(
     /(\b\w+\s*)\[([^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*)\]/g,
     (_, nodeId, label) => `${nodeId}[${label.replace(/\[([^\[\]]*)\]/g, '($1)')}]`,
+  );
+
+  // Ensure node labels with + or - that look like bare ion formulas are quoted.
+  // e.g.  A[H3O+]  →  A["H3O+"]   (prevents + being parsed as an operator)
+  s = s.replace(
+    /(\b\w+\s*)\[([^\]"]*[+\-][^\]"]*)\]/g,
+    (_, nodeId, label) => `${nodeId}["${label.trim()}"]`,
   );
 
   return s;
@@ -163,13 +182,9 @@ export function InlineMermaid({ code }: { code: string }) {
     return () => { cancelled = true; };
   }, [id, code]);
 
-  if (error) {
-    return (
-      <div className="my-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-400 italic">
-        Diagram unavailable
-      </div>
-    );
-  }
+  // Silently suppress failed diagrams — showing an error inside lesson content
+  // is more disruptive than simply omitting the visual.
+  if (error) return null;
 
   if (!svg) {
     return <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse my-4" />;
