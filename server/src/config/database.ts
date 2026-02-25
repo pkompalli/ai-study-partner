@@ -231,6 +231,7 @@ db.exec(`
 const addCol = (table: string, col: string, def: string) => {
   try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); } catch { /* already exists */ }
 };
+addCol('users',       'scoring_rubric',  'TEXT');
 addCol('topic_cards', 'ease_factor',     'REAL    NOT NULL DEFAULT 2.5');
 addCol('topic_cards', 'interval_days',   'INTEGER NOT NULL DEFAULT 1');
 addCol('topic_cards', 'times_seen',      'INTEGER NOT NULL DEFAULT 0');

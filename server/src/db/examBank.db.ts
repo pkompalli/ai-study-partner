@@ -249,6 +249,7 @@ export function saveExamQuestions(
   formatId: string,
   courseId: string,
   questions: Array<{
+    id?: string;           // use this UUID when provided (pre-assigned by caller)
     section_id: string;
     topic_id?: string;
     question_text: string;
@@ -269,7 +270,7 @@ export function saveExamQuestions(
   db.transaction((qs: typeof questions) => {
     for (const q of qs) {
       insert.run(
-        randomUUID(), formatId, q.section_id,
+        q.id ?? randomUUID(), formatId, q.section_id,
         q.topic_id ?? null, courseId,
         q.question_text,
         q.dataset ?? null,
@@ -488,4 +489,15 @@ export function getTopicReadinessForCourse(userId: string, courseId: string): To
       ? Math.round((r.questions_correct / r.questions_attempted) * 100)
       : 0,
   }));
+}
+
+// ─── User settings ────────────────────────────────────────────────────────────
+
+export function getUserScoringRubric(userId: string): string {
+  const row = db.prepare('SELECT scoring_rubric FROM users WHERE id = ?').get(userId) as { scoring_rubric: string | null } | undefined;
+  return row?.scoring_rubric ?? '';
+}
+
+export function setUserScoringRubric(userId: string, rubric: string): void {
+  db.prepare('UPDATE users SET scoring_rubric = ? WHERE id = ?').run(rubric || null, userId);
 }

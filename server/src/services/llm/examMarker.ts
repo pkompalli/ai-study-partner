@@ -1,6 +1,6 @@
 import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
 import { chatCompletion } from './client.js';
-import { buildMarkingPrompt, buildHintPrompt } from './examPrompts.js';
+import { buildMarkingPrompt, buildHintPrompt, buildFullAnswerPrompt } from './examPrompts.js';
 import type { MarkCriterion } from '../../db/examBank.db.js';
 
 export interface MarkResult {
@@ -15,6 +15,7 @@ export async function markAnswer(params: {
   markScheme: MarkCriterion[];
   maxMarks: number;
   studentAnswer: string;
+  customRubric?: string;
   // MCQ-specific: skip LLM if type is mcq
   correctOptionIndex?: number;
   selectedOptionIndex?: number;
@@ -40,6 +41,7 @@ export async function markAnswer(params: {
     markScheme: params.markScheme,
     maxMarks: params.maxMarks,
     studentAnswer: params.studentAnswer,
+    customRubric: params.customRubric,
   });
 
   // Build message content — include uploaded images if present
@@ -95,4 +97,21 @@ export async function getHint(params: {
   );
 
   return hint.trim();
+}
+
+export async function getFullAnswer(params: {
+  questionText: string;
+  questionType: string;
+  dataset?: string;
+  markScheme: MarkCriterion[];
+  maxMarks: number;
+}): Promise<string> {
+  const prompt = buildFullAnswerPrompt(params);
+
+  const answer = await chatCompletion(
+    [{ role: 'user', content: prompt }],
+    { temperature: 0.3, maxTokens: 1400 },
+  );
+
+  return answer.trim();
 }

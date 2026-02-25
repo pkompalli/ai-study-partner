@@ -6,10 +6,11 @@ import {
   listFormats, createFormat, getFormat, patchFormat, putFormat, removeFormat,
   inferFormat,
   generateQuestions, listQuestions, clearQuestions,
-  generateBatchHandler, markStandaloneHandler, getHintStandaloneHandler,
+  generateBatchHandler, markStandaloneHandler, getHintStandaloneHandler, getFullAnswerHandler,
   startAttempt, getAttemptHandler, submitAnswerHandler, getHintHandler, submitAttemptHandler,
   getReadiness,
   extractPaperHandler, importExtractedHandler,
+  getSettingsHandler, updateSettingsHandler,
 } from '../controllers/examPrep.controller.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -33,9 +34,14 @@ router.post('/formats/:id/questions/batch',  requireAuth, llmLimiter, generateBa
 router.get('/formats/:id/questions',         requireAuth, listQuestions);
 router.delete('/formats/:id/questions',      requireAuth, clearQuestions);
 
-// Standalone marking + hints (session practice tab — no attempt required)
-router.post('/mark', requireAuth, llmLimiter, upload.array('files', 10), markStandaloneHandler);
-router.post('/hint', requireAuth, llmLimiter, getHintStandaloneHandler);
+// Standalone marking + hints + full answer (session practice tab — no attempt required)
+router.post('/mark',   requireAuth, llmLimiter, upload.array('files', 10), markStandaloneHandler);
+router.post('/hint',   requireAuth, llmLimiter, getHintStandaloneHandler);
+router.post('/answer', requireAuth, llmLimiter, getFullAnswerHandler);
+
+// User settings
+router.get('/settings',   requireAuth, getSettingsHandler);
+router.patch('/settings', requireAuth, updateSettingsHandler);
 
 // Attempts
 router.post('/attempts',           requireAuth, startAttempt);

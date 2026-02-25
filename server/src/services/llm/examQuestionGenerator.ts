@@ -207,6 +207,9 @@ async function runWithConcurrency<T>(
     const batch = tasks.slice(i, i + concurrency);
     const settled = await Promise.allSettled(batch.map(t => t()));
     settled.forEach((r, j) => {
+      if (r.status === 'rejected') {
+        console.error(`[examQ] task ${i + j} rejected:`, r.reason);
+      }
       results[i + j] = r.status === 'fulfilled' ? r.value : null;
     });
   }
@@ -234,26 +237,52 @@ function getMaxTokensForType(questionType: string): number {
   }
 }
 
+/**
+ * The LLM often emits LaTeX backslash commands (\\mathrm, \\Delta, \\ce, \\,) directly
+ * inside JSON string values without doubling the backslash.  JSON only permits the
+ * escape sequences: \" \\ \/ \b \f \n \r \t \uXXXX — anything else (e.g. \m, \D, \c)
+ * is a syntax error.  This helper fixes those bare backslashes while leaving already-
+ * doubled sequences (\\\\) and valid JSON escapes intact.
+ */
+function fixLaTeXBackslashes(s: string): string {
+  // Negative lookbehind: only match a backslash NOT preceded by another backslash
+  // Negative lookahead:  skip sequences that are already valid JSON escape characters
+  return s.replace(/(?<!\\)\\(?!["\\/bfnrtu])/g, '\\\\');
+}
+
 function parseGeneratedQuestion(
   raw: string,
   section: ExamSection,
   topicId: string | undefined,
   defaultMarks: number,
 ): GeneratedQuestion | null {
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(raw.trim());
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+  let parsed: Record<string, unknown> | undefined;
+
+  // Try strategies in order: raw → fixed → extracted → extracted+fixed
+  const candidates: string[] = [raw.trim(), fixLaTeXBackslashes(raw.trim())];
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    candidates.push(match[0], fixLaTeXBackslashes(match[0]));
+  }
+
+  for (const candidate of candidates) {
     try {
-      parsed = JSON.parse(match[0]);
+      parsed = JSON.parse(candidate) as Record<string, unknown>;
+      break;
     } catch {
-      return null;
+      // try next candidate
     }
   }
 
-  if (!parsed['question_text'] || typeof parsed['question_text'] !== 'string') return null;
+  if (!parsed) {
+    console.error('[examQ] parse failed for all strategies. Raw (first 300):', raw.slice(0, 300));
+    return null;
+  }
+
+  if (!parsed['question_text'] || typeof parsed['question_text'] !== 'string') {
+    console.error('[examQ] missing/invalid question_text. Keys:', Object.keys(parsed));
+    return null;
+  }
 
   return {
     section_id: section.id,
@@ -288,32 +317,48 @@ export async function generateExamQuestions(params: {
   const tasks: Array<() => Promise<GeneratedQuestion | null>> = [];
 
   if (batchCount !== undefined) {
-    // Batch mode: distribute batchCount questions round-robin across sections
+    // Batch mode: generate SEQUENTIALLY so each question receives real text of prior questions
+    // as context, preventing the LLM from repeating the same "most obvious" example.
+    const batchResults: GeneratedQuestion[] = [];
+    const seenTexts: string[] = [];
+
     for (let qi = 0; qi < batchCount; qi++) {
       const section = sections[qi % sections.length];
       const topic = topics[qi % topics.length];
       const defaultMarks = section.marks_per_question
         ?? (section.total_marks ? Math.round(section.total_marks / section.num_questions) : 1);
 
-      tasks.push(async (): Promise<GeneratedQuestion | null> => {
-        const prompt = buildExamQuestionPrompt({
-          sectionName: section.name,
-          questionType: section.question_type,
-          marksForQuestion: defaultMarks,
-          topicName: topic.name,
-          subjectName: topic.subjectName,
-          courseName,
-          examName,
-          levelLabel: level.label,
-          difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
-        });
+      const prompt = buildExamQuestionPrompt({
+        sectionName: section.name,
+        questionType: section.question_type,
+        marksForQuestion: defaultMarks,
+        topicName: topic.name,
+        subjectName: topic.subjectName,
+        courseName,
+        examName,
+        levelLabel: level.label,
+        difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
+        existingQuestions: [...seenTexts],
+      });
+
+      try {
         const raw = await chatCompletion(
           [{ role: 'user', content: prompt }],
-          { temperature: 0.85, maxTokens: getMaxTokensForType(section.question_type) },
+          { temperature: 0.9, maxTokens: getMaxTokensForType(section.question_type) },
         );
-        return parseGeneratedQuestion(raw, section, topic.id, defaultMarks);
-      });
+        const result = parseGeneratedQuestion(raw, section, topic.id, defaultMarks);
+        if (result) {
+          batchResults.push(result);
+          // Store a concise snippet so the LLM knows what to avoid next time
+          seenTexts.push(result.question_text.replace(/\s+/g, ' ').slice(0, 120));
+        }
+      } catch (err) {
+        console.warn(`[examQ batch] question ${qi + 1} failed:`, err);
+      }
     }
+
+    console.log(`[examQ] generated ${batchResults.length}/${batchCount} questions (sequential batch)`);
+    return batchResults;
   } else {
     // Full generation mode: respect section.num_questions per section
     for (const section of sections) {
@@ -351,5 +396,7 @@ export async function generateExamQuestions(params: {
   }
 
   const results = await runWithConcurrency(tasks, 8);
-  return results.filter((r): r is GeneratedQuestion => r !== null);
+  const valid = results.filter((r): r is GeneratedQuestion => r !== null);
+  console.log(`[examQ] generated ${valid.length}/${tasks.length} questions (${tasks.length - valid.length} failed)`);
+  return valid;
 }

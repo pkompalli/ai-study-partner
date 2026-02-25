@@ -67,7 +67,7 @@ export function RichMessageContent({ content, invert }: Props) {
     <div className={cn('prose prose-sm max-w-none', invert && 'prose-invert')}>
       <ReactMarkdown
         remarkPlugins={[remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
         components={makeComponents(invert)}
       >{content}</ReactMarkdown>
     </div>

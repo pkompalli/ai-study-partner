@@ -163,7 +163,7 @@ Quality requirements:
 - For calculation questions: include every piece of data the student needs; state units
 - For data analysis: dataset must have ≥4 data points; question must require processing the data (not just reading it off)
 
-Notation: use LaTeX for all math and chemistry — inline math $...$, display math $$...$$, chemical formulas/equations \ce{...} (e.g. \ce{H2SO4}, \ce{Ca^{2+}}, \ce{2H2 + O2 -> 2H2O}).
+Notation: use LaTeX for all math and chemistry. Inline math: $...$, display math: $$...$$ (for equations on their own line). NEVER use \\begin{align*}, \\begin{equation}, \\begin{aligned}, \\begin{array}, or any \\begin{}...\\end{} LaTeX environments — use $$...$$ for display math instead. Chemical formulas/equations MUST use \\ce{} INSIDE dollar signs: $\\ce{H2SO4}$, $\\ce{Ca^{2+}}$, $\\ce{2H2 + O2 -> 2H2O}$. ALL LaTeX — including \\ce{}, superscripts ^{}, subscripts _{}, Greek letters, units like \\mathrm{} — MUST be inside $...$ or $$...$$ delimiters. NEVER write bare LaTeX without $ delimiters.
 
 Return ONLY valid JSON — no markdown, no code fences:
 {
@@ -183,10 +183,15 @@ export function buildMarkingPrompt(params: {
   markScheme: MarkCriterion[];
   maxMarks: number;
   studentAnswer: string;
+  customRubric?: string;
 }): string {
   const schemeText = params.markScheme
     .map(c => `  - ${c.label}${c.description ? ': ' + c.description : ''} [${c.marks} mark${c.marks !== 1 ? 's' : ''}]`)
     .join('\n');
+
+  const rubricBlock = params.customRubric?.trim()
+    ? `\nAdditional marking instructions:\n${params.customRubric.trim()}\n`
+    : '';
 
   return `You are an examiner marking a student's answer. Award marks strictly according to the mark scheme.
 
@@ -194,7 +199,7 @@ Question: ${params.questionText}
 ${params.dataset ? `\nData / Context:\n${params.dataset}\n` : ''}
 Mark Scheme (${params.maxMarks} marks total):
 ${schemeText}
-
+${rubricBlock}
 Student's Answer:
 ${params.studentAnswer}
 
@@ -238,4 +243,36 @@ ${params.dataset ? `\nData / Context:\n${params.dataset}\n` : ''}${params.studen
 ${specificity}
 
 Respond with a single concise hint (2–3 sentences maximum). Do NOT quote the mark scheme or reveal any mark scheme points directly.`;
+}
+
+// ─── Full worked answer ────────────────────────────────────────────────────────
+
+export function buildFullAnswerPrompt(params: {
+  questionText: string;
+  questionType: string;
+  dataset?: string;
+  markScheme: MarkCriterion[];
+  maxMarks: number;
+}): string {
+  const schemeText = params.markScheme
+    .map(c => `  - ${c.label}${c.description ? ': ' + c.description : ''} [${c.marks} mark${c.marks !== 1 ? 's' : ''}]`)
+    .join('\n');
+
+  return `You are an expert tutor. Provide the complete model answer and worked solution for this exam question.
+
+Question: ${params.questionText}
+${params.dataset ? `\nData / Context:\n${params.dataset}\n` : ''}
+Mark Scheme (${params.maxMarks} marks total):
+${schemeText}
+
+Write a complete model answer that:
+- Addresses every mark scheme point explicitly
+- Shows all working, steps, and reasoning clearly
+- For calculations: shows each algebraic/numerical step with correct units
+- For essays/long-answer: structured paragraphs covering all assessment objectives
+- Uses correct scientific/mathematical terminology throughout
+
+Use LaTeX for all mathematical notation (inline: $...$, display: $$...$$). NEVER use \\begin{align*}, \\begin{equation}, or any \\begin{}...\\end{} environments — use $$...$$ for display math instead. Use $\\ce{}$ for chemical formulas and equations.
+
+Respond with the complete answer only — no preamble.`;
 }

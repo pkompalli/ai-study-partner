@@ -45,6 +45,12 @@ const server = app.listen(parseInt(env.PORT), () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT}`);
 });
 
-// Graceful shutdown so tsx watch can restart without EADDRINUSE
-process.on('SIGTERM', () => server.close());
-process.on('SIGINT',  () => server.close());
+// Graceful shutdown — stop accepting new connections then exit.
+// Force-exit after 3 s so tsx watch can restart promptly even if SSE
+// streams or keep-alive sockets are still open.
+const shutdown = () => {
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 3000).unref();
+};
+process.on('SIGTERM', shutdown);
+process.on('SIGINT',  shutdown);

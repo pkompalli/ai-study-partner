@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Compass, BookOpen, Lightbulb, Brain, ChevronLeft, ChevronRight, Bookmark, Check, GraduationCap, CheckCircle2, XCircle, Settings, Minus, Plus, Paperclip } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Lightbulb, Brain, ChevronLeft, ChevronRight, Bookmark, Check, GraduationCap, CheckCircle2, XCircle, Settings, Minus, Plus, Paperclip, BookMarked } from 'lucide-react';
 import { useSessionStore } from '@/store/sessionStore';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
@@ -19,6 +19,28 @@ const DIFFICULTY_LABELS: Record<number, string> = {
   1: 'Easy', 2: 'Medium-Easy', 3: 'Standard', 4: 'Hard', 5: 'Stretch',
 };
 
+/**
+ * Wraps bare LaTeX environments (\begin{env}...\end{env}) in $$...$$ so that
+ * remark-math can process them. Without this, the LLM sometimes outputs
+ * \begin{align*} blocks without $ wrappers and they render as plain text.
+ */
+function preprocessLatex(content: string): string {
+  if (!content) return content;
+  // Step 1: protect already-delimited math blocks from double-processing
+  const saved: string[] = [];
+  let s = content.replace(
+    /\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\$[^$\n]+\$/g,
+    (m) => { saved.push(m); return `\x02${saved.length - 1}\x03`; },
+  );
+  // Step 2: wrap bare \begin{env}...\end{env} blocks in $$...$$
+  s = s.replace(
+    /\\begin\{([^}]+)\}([\s\S]*?)\\end\{\1\}/g,
+    (_, env, body) => `\n$$\n\\begin{${env}}${body}\\end{${env}}\n$$\n`,
+  );
+  // Step 3: restore the protected blocks
+  return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i]);
+}
+
 const QUESTION_TYPE_COLORS: Record<string, string> = {
   mcq: 'bg-blue-50 text-blue-700 border-blue-200',
   short_answer: 'bg-green-50 text-green-700 border-green-200',
@@ -35,10 +57,11 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
 
 function ExamPrepTab({
   formats, sessionBatch, sessionAnswers, sessionMarkingId,
-  sessionBatchLoading, sessionBatchGenerating, examDifficulty,
-  sessionHints, sessionHintLoading,
+  sessionBatchLoading, sessionBatchGenerating, sessionBatchError, examDifficulty,
+  sessionHints, sessionHintLoading, requestedCount,
+  sessionFullAnswers, sessionFullAnswerLoading,
   onLoadBatch, onLoadMore, onSetAnswerText, onSetOption, onSubmit, onRefreshBatch, onNavigateSettings,
-  onFetchHint, onClearHint,
+  onFetchHint, onClearHint, onSetRequestedCount, onFetchFullAnswer,
 }: {
   formats: import('@/types').ExamFormat[];
   sessionBatch: ExamQuestion[];
@@ -46,9 +69,13 @@ function ExamPrepTab({
   sessionMarkingId: string | null;
   sessionBatchLoading: boolean;
   sessionBatchGenerating: boolean;
+  sessionBatchError: string | null;
   examDifficulty: number;
   sessionHints: Record<string, { text: string; count: number }>;
   sessionHintLoading: string | null;
+  requestedCount: number;
+  sessionFullAnswers: Record<string, string>;
+  sessionFullAnswerLoading: string | null;
   onLoadBatch: (formatId: string) => void;
   onLoadMore: (formatId: string) => void;
   onSetAnswerText: (qId: string, text: string) => void;
@@ -58,11 +85,20 @@ function ExamPrepTab({
   onNavigateSettings: () => void;
   onFetchHint: (qId: string, answerText?: string) => void;
   onClearHint: (qId: string) => void;
+  onSetRequestedCount: (n: number) => void;
+  onFetchFullAnswer: (qId: string) => void;
 }) {
   const format = formats[0] ?? null;
-  const allAnswered = sessionBatch.length > 0 && sessionBatch.every(q => sessionAnswers[q.id]?.marked);
 
-  if (!format) {
+  // Only block on missing format when there are no questions to show
+  if (!format && sessionBatch.length === 0) {
+    if (sessionBatchLoading) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <Spinner className="h-6 w-6 text-primary-400" />
+        </div>
+      );
+    }
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <GraduationCap className="h-8 w-8 text-gray-200" />
@@ -86,13 +122,27 @@ function ExamPrepTab({
 
   if (sessionBatch.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3">
-        <button
-          onClick={() => onLoadBatch(format.id)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors"
-        >
-          <GraduationCap className="h-4 w-4" /> Start Practising
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <GraduationCap className="h-8 w-8 text-gray-200" />
+        <p className="text-sm font-semibold text-gray-700">How many questions?</p>
+        <div className="grid grid-cols-4 gap-2 w-full max-w-xs">
+          {[5, 10, 15, 20].map(n => (
+            <button key={n} onClick={() => onSetRequestedCount(n)}
+              className={`py-2 rounded-lg text-sm font-semibold border transition-colors
+                ${requestedCount === n
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-primary-300'}`}>
+              {n}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => onLoadBatch(format.id)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors">
+          <GraduationCap className="h-4 w-4" /> Start ({requestedCount} questions)
         </button>
+        {sessionBatchError && (
+          <p className="text-xs text-red-500 max-w-xs">Error: {sessionBatchError}</p>
+        )}
       </div>
     );
   }
@@ -113,16 +163,14 @@ function ExamPrepTab({
           className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-opacity">
           <Plus className="h-3.5 w-3.5 text-gray-600" />
         </button>
-        {allAnswered && (
-          <button
-            onClick={() => onLoadMore(format.id)}
-            disabled={sessionBatchGenerating}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-60 transition-colors"
-          >
-            {sessionBatchGenerating ? <Spinner className="h-3 w-3" /> : null}
-            5 more ↓
-          </button>
-        )}
+        <button
+          onClick={() => onLoadMore(format.id)}
+          disabled={sessionBatchGenerating}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-60 transition-colors"
+        >
+          {sessionBatchGenerating ? <Spinner className="h-3 w-3" /> : null}
+          {requestedCount} more ↓
+        </button>
       </div>
 
       {/* Questions */}
@@ -136,11 +184,14 @@ function ExamPrepTab({
             isMarking={sessionMarkingId === question.id}
             hint={sessionHints[question.id]}
             isHintLoading={sessionHintLoading === question.id}
+            fullAnswer={sessionFullAnswers[question.id]}
+            isFullAnswerLoading={sessionFullAnswerLoading === question.id}
             onSetText={(t) => onSetAnswerText(question.id, t)}
             onSetOption={(i) => onSetOption(question.id, i)}
             onSubmit={(files) => onSubmit(question.id, files)}
             onFetchHint={(answerText) => onFetchHint(question.id, answerText)}
             onClearHint={() => onClearHint(question.id)}
+            onFetchFullAnswer={() => onFetchFullAnswer(question.id)}
           />
         ))}
       </div>
@@ -150,7 +201,8 @@ function ExamPrepTab({
 
 function ExamQuestionCard({
   question, index, localAnswer, isMarking, hint, isHintLoading,
-  onSetText, onSetOption, onSubmit, onFetchHint, onClearHint,
+  fullAnswer, isFullAnswerLoading,
+  onSetText, onSetOption, onSubmit, onFetchHint, onClearHint, onFetchFullAnswer,
 }: {
   question: ExamQuestion;
   index: number;
@@ -158,19 +210,28 @@ function ExamQuestionCard({
   isMarking: boolean;
   hint?: { text: string; count: number };
   isHintLoading: boolean;
+  fullAnswer?: string;
+  isFullAnswerLoading: boolean;
   onSetText: (t: string) => void;
   onSetOption: (i: number) => void;
   onSubmit: (files?: File[]) => void;
   onFetchHint: (answerText?: string) => void;
   onClearHint: () => void;
+  onFetchFullAnswer: () => void;
 }) {
   const [answerFiles, setAnswerFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showFullAnswer, setShowFullAnswer] = useState(false);
 
   // Clear attached files once the question is marked
   useEffect(() => {
     if (localAnswer.marked) setAnswerFiles([]);
   }, [localAnswer.marked]);
+
+  // Auto-show the model answer panel when it first loads
+  useEffect(() => {
+    if (fullAnswer) setShowFullAnswer(true);
+  }, [fullAnswer]);
 
   const isMcq = question.section_question_type === 'mcq';
   const isMarked = localAnswer.marked;
@@ -195,8 +256,8 @@ function ExamQuestionCard({
             <ReactMarkdown
               className="prose prose-xs max-w-none text-gray-700"
               remarkPlugins={[remarkMath]}
-              rehypePlugins={[rehypeKatex]}
-            >{question.dataset}</ReactMarkdown>
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+            >{preprocessLatex(question.dataset)}</ReactMarkdown>
           </div>
         )}
 
@@ -204,8 +265,8 @@ function ExamQuestionCard({
           <ReactMarkdown
             className="prose prose-sm max-w-none"
             remarkPlugins={[remarkMath]}
-            rehypePlugins={[rehypeKatex]}
-          >{question.question_text}</ReactMarkdown>
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+          >{preprocessLatex(question.question_text)}</ReactMarkdown>
         </div>
 
 
@@ -230,7 +291,13 @@ function ExamQuestionCard({
                   <span className="w-4 h-4 rounded-full border flex items-center justify-center text-xs flex-shrink-0">
                     {String.fromCharCode(65 + idx)}
                   </span>
-                  <span className="flex-1">{opt}</span>
+                  <span className="flex-1">
+                    <ReactMarkdown
+                      components={{ p: ({ children }) => <>{children}</> }}
+                      remarkPlugins={[remarkMath]}
+                      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                    >{preprocessLatex(opt)}</ReactMarkdown>
+                  </span>
                   {locked && isCorrect && <CheckCircle2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />}
                   {locked && selected && !isCorrect && <XCircle className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />}
                 </button>
@@ -289,7 +356,13 @@ function ExamQuestionCard({
               }
               <span className="text-xs font-semibold">{localAnswer.score}/{question.max_marks} marks</span>
             </div>
-            {localAnswer.feedback && <p className="text-xs text-gray-700 leading-relaxed">{localAnswer.feedback}</p>}
+            {localAnswer.feedback && (
+              <ReactMarkdown
+                className="prose prose-xs max-w-none text-xs text-gray-700 leading-relaxed"
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+              >{preprocessLatex(localAnswer.feedback)}</ReactMarkdown>
+            )}
           </div>
         )}
 
@@ -301,12 +374,31 @@ function ExamQuestionCard({
             </button>
             <div className="flex items-start gap-2 pr-5">
               <Lightbulb className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 leading-relaxed">{hint.text}</p>
+              <ReactMarkdown
+                className="prose prose-xs max-w-none text-xs text-amber-800 leading-relaxed"
+                remarkPlugins={[remarkMath]}
+                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+              >{preprocessLatex(hint.text)}</ReactMarkdown>
             </div>
           </div>
         )}
 
-        {/* Submit + Hint row */}
+        {/* Full answer display — only shown when showFullAnswer is true */}
+        {fullAnswer && showFullAnswer && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <BookMarked className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+              <span className="text-xs font-semibold text-emerald-700">Model Answer</span>
+            </div>
+            <ReactMarkdown
+              className="prose prose-xs max-w-none text-xs text-emerald-900 leading-relaxed"
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+            >{preprocessLatex(fullAnswer)}</ReactMarkdown>
+          </div>
+        )}
+
+        {/* Submit + Hint + Show Answer row */}
         {!isMarked && (
           <div className="flex items-center gap-2">
             <button
@@ -318,6 +410,15 @@ function ExamQuestionCard({
               {(hint?.count ?? 0) > 0 ? `Hint (${hint!.count}/2)` : 'Hint'}
             </button>
             <button
+              onClick={() => fullAnswer ? setShowFullAnswer(s => !s) : onFetchFullAnswer()}
+              disabled={isFullAnswerLoading}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors flex-shrink-0"
+              title="Show or hide the complete worked answer"
+            >
+              {isFullAnswerLoading ? <Spinner className="h-3 w-3" /> : <BookMarked className="h-3 w-3 text-emerald-600" />}
+              {fullAnswer ? (showFullAnswer ? 'Hide Answer' : 'Show Answer') : 'Show Answer'}
+            </button>
+            <button
               onClick={() => onSubmit(answerFiles.length > 0 ? answerFiles : undefined)}
               disabled={isMarking || !canSubmit}
               className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
@@ -326,6 +427,18 @@ function ExamQuestionCard({
               Submit Answer
             </button>
           </div>
+        )}
+
+        {/* Show / Hide Model Answer after marking */}
+        {isMarked && (
+          <button
+            onClick={() => fullAnswer ? setShowFullAnswer(s => !s) : onFetchFullAnswer()}
+            disabled={isFullAnswerLoading}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 transition-colors"
+          >
+            {isFullAnswerLoading ? <Spinner className="h-3 w-3" /> : <BookMarked className="h-3 w-3" />}
+            {fullAnswer ? (showFullAnswer ? 'Hide Model Answer' : 'Show Model Answer') : 'Show Model Answer'}
+          </button>
         )}
       </div>
     </div>
@@ -350,9 +463,11 @@ export function SessionPage() {
 
   const {
     formats, fetchFormats,
-    sessionBatch, sessionBatchLoading, sessionBatchGenerating,
+    sessionBatch, sessionBatchLoading, sessionBatchGenerating, sessionBatchError,
     sessionAnswers, sessionMarkingId, examDifficulty,
     sessionHints, sessionHintLoading,
+    sessionFullAnswers, sessionFullAnswerLoading, fetchSessionFullAnswer,
+    requestedCount, setRequestedCount, persistExamState, restoreExamState,
     loadSessionBatch, loadMoreSessionBatch, refreshBatchAtDifficulty,
     setSessionAnswerText, setSessionSelectedOption, submitSessionAnswer,
     fetchSessionHint, clearSessionHint,
@@ -362,7 +477,7 @@ export function SessionPage() {
   const [loading, setLoading] = useState(true);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [centerTab, setCenterTab] = useState<'study' | 'exam'>('study');
-  const [examTabInitialized, setExamTabInitialized] = useState(false);
+  const [, setExamTabInitialized] = useState(false);
   // Panel toggle
   const [rightOpen, setRightOpen] = useState(true);
 
@@ -378,17 +493,61 @@ export function SessionPage() {
   const [reviewMode, setReviewMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Stable key that survives across sessions for the same topic — format: "courseId_topicId_chapterId"
+  // A new session is created every time the user clicks a topic, so sessionId alone can't key exam data.
+  const topicExamKeyRef = useRef<string | null>(null);
+
+  /** Persist exam state under both the session ID and the topic-stable key (if available). */
+  const persistExamBothKeys = (sessionId: string) => {
+    const { sessionBatch } = useExamStore.getState();
+    if (!sessionBatch.length) return;
+    persistExamState(sessionId);
+    if (topicExamKeyRef.current) persistExamState(topicExamKeyRef.current);
+  };
 
   useEffect(() => {
     if (!id) return;
+    topicExamKeyRef.current = null; // reset for this session until loadSession reveals the topic
+
+    // Persist before the browser tab/window closes so we don't lose questions
+    // even when React's cleanup effect doesn't fire (e.g. hard navigation).
+    const handleBeforeUnload = () => {
+      persistExamBothKeys(id);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     loadSession(id).then(async () => {
       const session = useSessionStore.getState().activeSession;
       if (session?.course_id) {
         fetchCourse(session.course_id).catch(() => {});
+        // Always fetch formats eagerly so the exam tab is ready immediately
+        fetchFormats(session.course_id).catch(() => {});
       }
       fetchSummary(id, 0);
+
+      // Build the topic-stable key now that we know the session context
+      if (session?.course_id && session?.topic_id) {
+        topicExamKeyRef.current = `${session.course_id}_${session.topic_id}_${session.chapter_id ?? ''}`;
+      }
+
+      // Try topic key first (works even when this is a brand-new session for the same topic),
+      // fall back to session key for backward compatibility.
+      const topicKey = topicExamKeyRef.current;
+      const restored = (topicKey ? restoreExamState(topicKey) : false) || restoreExamState(id);
+      if (restored) setExamTabInitialized(true);
     }).finally(() => setLoading(false));
+
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Read session info before clearSession() wipes it
+      const { activeSession: sess } = useSessionStore.getState();
+      if (sess?.course_id && sess?.topic_id) {
+        topicExamKeyRef.current = `${sess.course_id}_${sess.topic_id}_${sess.chapter_id ?? ''}`;
+      }
+      // Only persist when there are questions — guards against React StrictMode's
+      // double-mount firing the cleanup before loadSession resolves (which would
+      // overwrite good localStorage data with an empty store).
+      persistExamBothKeys(id);
       clearSession();
       setActiveCourse(null);
       clearSessionExam();
@@ -448,20 +607,23 @@ export function SessionPage() {
     }
   };
 
-  const handleOpenExamTab = async () => {
+  const handleOpenExamTab = () => {
     setCenterTab('exam');
-    if (!examTabInitialized && activeSession?.course_id) {
-      setExamTabInitialized(true);
-      await fetchFormats(activeSession.course_id);
-    }
   };
 
   const handleLoadExamBatch = async (formatId: string) => {
     await loadSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
+    if (id) persistExamBothKeys(id);
+  };
+
+  const handleLoadMoreExamBatch = async (formatId: string) => {
+    await loadMoreSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
+    if (id) persistExamBothKeys(id);
   };
 
   const handleRefreshBatch = async (formatId: string, difficulty: number) => {
     await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.topic_id, activeSession?.chapter_id);
+    if (id) persistExamBothKeys(id);
   };
 
   const handleSummaryDepthChange = (newDepth: number) => {
@@ -546,7 +708,7 @@ export function SessionPage() {
               onClick={handleOpenExamTab}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${centerTab === 'exam' ? 'border-primary-500 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
-              <GraduationCap className="h-3.5 w-3.5" /> Exam Prep
+              <GraduationCap className="h-3.5 w-3.5" /> Exam Practice
             </button>
           </div>
 
@@ -603,7 +765,7 @@ export function SessionPage() {
             </>
           )}
 
-          {/* EXAM PREP TAB */}
+          {/* EXAM PRACTICE TAB */}
           {centerTab === 'exam' && (
             <ExamPrepTab
               formats={formats}
@@ -612,18 +774,24 @@ export function SessionPage() {
               sessionMarkingId={sessionMarkingId}
               sessionBatchLoading={sessionBatchLoading}
               sessionBatchGenerating={sessionBatchGenerating}
+              sessionBatchError={sessionBatchError}
               examDifficulty={examDifficulty}
               sessionHints={sessionHints}
               sessionHintLoading={sessionHintLoading}
+              requestedCount={requestedCount}
+              sessionFullAnswers={sessionFullAnswers}
+              sessionFullAnswerLoading={sessionFullAnswerLoading}
               onLoadBatch={handleLoadExamBatch}
-              onLoadMore={(formatId) => loadMoreSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id)}
+              onLoadMore={handleLoadMoreExamBatch}
               onSetAnswerText={setSessionAnswerText}
               onSetOption={setSessionSelectedOption}
-              onSubmit={(qId, files) => submitSessionAnswer(qId, files)}
+              onSubmit={async (qId, files) => { await submitSessionAnswer(qId, files); if (id) persistExamBothKeys(id); }}
               onRefreshBatch={handleRefreshBatch}
               onNavigateSettings={() => navigate(`/courses/${activeSession?.course_id}/settings`)}
               onFetchHint={(qId, answerText) => fetchSessionHint(qId, answerText)}
               onClearHint={clearSessionHint}
+              onSetRequestedCount={setRequestedCount}
+              onFetchFullAnswer={fetchSessionFullAnswer}
             />
           )}
         </div>

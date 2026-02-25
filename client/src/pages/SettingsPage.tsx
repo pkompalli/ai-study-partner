@@ -1,14 +1,130 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, GraduationCap, BookOpen, Plus, ChevronDown, ChevronRight,
-  Pencil, Check, X, RefreshCw, Trash2, Edit3,
+  Pencil, Check, X, RefreshCw, Trash2, Edit3, ClipboardList,
 } from 'lucide-react';
 import { useCourseStore } from '@/store/courseStore';
 import { useExamStore } from '@/store/examStore';
 import { Spinner } from '@/components/ui/Spinner';
 import { FormatCard, FormatSetupPanel, SectionRow } from '@/pages/ExamPrepPage';
 import type { ExamFormat, ExamSection, Course } from '@/types';
+import api from '@/lib/api';
+
+// ─── Scoring Rubric Editor ────────────────────────────────────────────────────
+
+const DEFAULT_RUBRIC_DESCRIPTION = `By default, questions are marked using the following criteria per type:
+• MCQ — correct option = full marks, otherwise 0
+• Calculation — Method (1 mark), Substitution (1 mark), Answer + Units (remaining marks)
+• Short Answer — each criterion worth 1 mark; point-based marking
+• Long Answer — grouped into Knowledge, Application, Analysis, Evaluation bands
+• Data Analysis — per-criterion; processing the data required, not just reading it off`;
+
+function RubricEditor() {
+  const [rubric, setRubric] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get<{ scoringRubric: string }>('/api/exam/settings');
+      setRubric(data.scoringRubric ?? '');
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const startEdit = () => { setDraft(rubric); setEditing(true); };
+  const cancel = () => setEditing(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api.patch('/api/exam/settings', { scoringRubric: draft });
+      setRubric(draft);
+      setEditing(false);
+    } catch { /* ignore */ } finally { setSaving(false); }
+  };
+
+  const reset = async () => {
+    setSaving(true);
+    try {
+      await api.patch('/api/exam/settings', { scoringRubric: '' });
+      setRubric('');
+      setEditing(false);
+    } catch { /* ignore */ } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
+        <div className="h-9 w-9 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+          <ClipboardList className="h-4.5 w-4.5 text-emerald-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold text-gray-900">Scoring Rubric</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Custom marking instructions applied when generating and marking questions</p>
+        </div>
+        {!editing && !loading && (
+          <button onClick={startEdit} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      <div className="px-5 py-4 space-y-3">
+        {/* Default rubric description (always visible) */}
+        <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 mb-1.5">Default Rubric</p>
+          <pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans leading-relaxed">{DEFAULT_RUBRIC_DESCRIPTION}</pre>
+        </div>
+
+        {/* Custom instructions */}
+        {loading ? (
+          <div className="flex justify-center py-3"><Spinner className="h-4 w-4" /></div>
+        ) : editing ? (
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block">
+              Custom Marking Instructions
+            </label>
+            <textarea
+              rows={5}
+              autoFocus
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"
+              placeholder="e.g. Award marks for correct working even if the final answer is wrong. Do not penalise for minor unit errors..."
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button onClick={cancel} className="flex-1 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={reset} disabled={saving} className="px-3 py-2 rounded-lg border border-red-200 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50">
+                Reset to Default
+              </button>
+              <button onClick={save} disabled={saving} className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-1.5">
+                {saving ? <Spinner className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Custom Instructions</p>
+            {rubric ? (
+              <p className="text-xs text-gray-700 bg-primary-50 border border-primary-100 rounded-lg px-3 py-2 whitespace-pre-wrap leading-relaxed">{rubric}</p>
+            ) : (
+              <p className="text-xs text-gray-400 italic">None — using default rubric only. Click the edit icon above to add custom instructions.</p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── Inline course name / exam_name editor ────────────────────────────────────
 
@@ -557,6 +673,8 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <RubricEditor />
 
       {loading && courses.length === 0 ? (
         <div className="flex justify-center py-12"><Spinner className="h-6 w-6" /></div>

@@ -10,6 +10,8 @@ import { useExamStore } from '@/store/examStore';
 import type { PaperPreview } from '@/store/examStore';
 import { Spinner } from '@/components/ui/Spinner';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import type { ExamSection, ExamFormat, LocalAnswerState } from '@/types';
 
 export const QUESTION_TYPE_LABELS: Record<string, string> = {
@@ -645,12 +647,20 @@ function PracticeSession() {
           {/* Dataset (data analysis) */}
           {question.dataset && (
             <div className="bg-gray-50 rounded-lg p-3 text-sm border border-gray-200 overflow-x-auto">
-              <ReactMarkdown className="prose prose-sm max-w-none text-gray-700">{question.dataset}</ReactMarkdown>
+              <ReactMarkdown
+              className="prose prose-sm max-w-none text-gray-700"
+              remarkPlugins={[remarkMath]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+            >{question.dataset}</ReactMarkdown>
             </div>
           )}
 
           {/* Question text */}
-          <p className="text-gray-900 font-medium leading-relaxed">{question.question_text}</p>
+          <ReactMarkdown
+            className="prose prose-sm max-w-none text-gray-900 font-medium leading-relaxed"
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+          >{question.question_text}</ReactMarkdown>
 
           {/* Answer input */}
           {isMcq ? (
@@ -678,7 +688,13 @@ function PracticeSession() {
                     <span className="flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs">
                       {String.fromCharCode(65 + idx)}
                     </span>
-                    <span className="flex-1">{opt}</span>
+                    <span className="flex-1">
+                      <ReactMarkdown
+                        components={{ p: ({ children }) => <>{children}</> }}
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                      >{opt}</ReactMarkdown>
+                    </span>
                     {locked && isCorrect && <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />}
                     {locked && selected && !isCorrect && <XCircle className="h-4 w-4 text-red-500 flex-shrink-0" />}
                   </button>
@@ -711,7 +727,11 @@ function PracticeSession() {
                 </span>
               </div>
               {localAnswer.feedback && (
-                <p className="text-sm leading-relaxed text-gray-700">{localAnswer.feedback}</p>
+                <ReactMarkdown
+                  className="prose prose-sm max-w-none text-sm leading-relaxed text-gray-700"
+                  remarkPlugins={[remarkMath]}
+                  rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                >{localAnswer.feedback}</ReactMarkdown>
               )}
             </div>
           )}

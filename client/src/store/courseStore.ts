@@ -66,6 +66,12 @@ export const useCourseStore = create<CourseState>((set, get) => ({
 
   deleteCourse: async (id) => {
     await api.delete(`/api/courses/${id}`);
+    // Remove stale exam-practice localStorage entries for this course.
+    // Topic-based keys have the format: exam_practice_<courseId>_<topicId>_<chapterId>
+    const prefix = `exam_practice_${id}_`;
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(prefix))
+      .forEach(k => localStorage.removeItem(k));
     set(state => ({ courses: state.courses.filter(c => c.id !== id) }));
   },
 

@@ -80,7 +80,11 @@ interface ExamState {
   sessionMarkingId: string | null;
   sessionBatchLoading: boolean;
   sessionBatchGenerating: boolean;
+  sessionBatchError: string | null;
   examDifficulty: number;
+  requestedCount: number;
+  sessionFullAnswers: Record<string, string>; // questionId → full worked answer
+  sessionFullAnswerLoading: string | null;    // questionId currently loading
 
   // Actions
   fetchFormats: (courseId: string) => Promise<void>;
@@ -146,7 +150,11 @@ interface ExamState {
   submitSessionAnswer: (questionId: string, files?: File[]) => Promise<void>;
   fetchSessionHint: (questionId: string, answerText?: string) => Promise<void>;
   clearSessionHint: (questionId: string) => void;
+  fetchSessionFullAnswer: (questionId: string) => Promise<void>;
   setExamDifficulty: (d: number) => void;
+  setRequestedCount: (n: number) => void;
+  persistExamState: (sessionId: string) => void;
+  restoreExamState: (sessionId: string) => boolean;
   clearSessionExam: () => void;
 }
 
@@ -178,7 +186,11 @@ export const useExamStore = create<ExamState>((set, get) => ({
   sessionMarkingId: null,
   sessionBatchLoading: false,
   sessionBatchGenerating: false,
+  sessionBatchError: null,
   examDifficulty: 3,
+  requestedCount: 5,
+  sessionFullAnswers: {},
+  sessionFullAnswerLoading: null,
 
   fetchFormats: async (courseId) => {
     set({ formatsLoading: true });
@@ -409,55 +421,50 @@ export const useExamStore = create<ExamState>((set, get) => ({
   },
 
   loadSessionBatch: async (formatId, topicId, chapterId) => {
-    set({ sessionBatchLoading: true });
+    set({ sessionBatchLoading: true, sessionBatchError: null });
     try {
       // Always generate fresh questions — never show pre-stored/imported questions verbatim.
       // Scoped to chapter when set, otherwise topic.
-      const { examDifficulty } = get();
+      const { examDifficulty, requestedCount } = get();
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions/batch`,
-        { count: 5, difficulty: examDifficulty, topicId, chapterId },
+        { count: requestedCount, difficulty: examDifficulty, topicId, chapterId },
       );
       const questions = data.questions ?? [];
       set({
         sessionBankAll: questions,
-        sessionBatch: questions.slice(0, 5),
-        sessionBankOffset: Math.min(5, questions.length),
+        sessionBatch: questions,
+        sessionBankOffset: questions.length,
         sessionAnswers: {},
+        sessionBatchError: null,
       });
+    } catch (err: unknown) {
+      // Prefer the server's error body over the generic Axios status-code message
+      const axiosData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      const msg = axiosData?.error ?? (err instanceof Error ? err.message : 'Failed to generate questions');
+      set({ sessionBatchError: msg });
     } finally {
       set({ sessionBatchLoading: false });
     }
   },
 
   loadMoreSessionBatch: async (formatId, topicId, chapterId) => {
-    const { sessionBankAll, sessionBankOffset, examDifficulty } = get();
-    const remaining = sessionBankAll.slice(sessionBankOffset, sessionBankOffset + 5);
+    const { sessionBankAll, examDifficulty, requestedCount } = get();
 
-    if (remaining.length >= 5) {
-      set({
-        sessionBatch: remaining,
-        sessionBankOffset: sessionBankOffset + 5,
-        sessionAnswers: {},
-      });
-      return;
-    }
-
-    // Need to generate more questions
+    // Always generate new questions and append
     set({ sessionBatchGenerating: true });
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions/batch`,
-        { count: 5, difficulty: examDifficulty, topicId, chapterId },
+        { count: requestedCount, difficulty: examDifficulty, topicId, chapterId },
       );
       const newQs = data.questions ?? [];
       const all = [...sessionBankAll, ...newQs];
-      const nextBatch = all.slice(sessionBankOffset, sessionBankOffset + 5);
       set({
         sessionBankAll: all,
-        sessionBatch: nextBatch,
-        sessionBankOffset: sessionBankOffset + nextBatch.length,
-        sessionAnswers: {},
+        sessionBatch: all,
+        sessionBankOffset: all.length,
+        // sessionAnswers NOT cleared — preserved
       });
     } finally {
       set({ sessionBatchGenerating: false });
@@ -466,6 +473,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
 
   refreshBatchAtDifficulty: async (formatId, newDifficulty, topicId, chapterId) => {
     const clamped = Math.max(1, Math.min(5, newDifficulty));
+    const { requestedCount } = get();
     // Clear current batch immediately and show loading spinner
     set({
       examDifficulty: clamped,
@@ -478,13 +486,13 @@ export const useExamStore = create<ExamState>((set, get) => ({
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions/batch`,
-        { count: 5, difficulty: clamped, topicId, chapterId },
+        { count: requestedCount, difficulty: clamped, topicId, chapterId },
       );
       const newQs = data.questions ?? [];
       set({
         sessionBankAll: newQs,
-        sessionBatch: newQs.slice(0, 5),
-        sessionBankOffset: Math.min(5, newQs.length),
+        sessionBatch: newQs,
+        sessionBankOffset: newQs.length,
       });
     } finally {
       set({ sessionBatchLoading: false });
@@ -583,7 +591,72 @@ export const useExamStore = create<ExamState>((set, get) => ({
     });
   },
 
+  fetchSessionFullAnswer: async (questionId) => {
+    const { sessionFullAnswers } = get();
+    if (sessionFullAnswers[questionId]) return; // already fetched
+    set({ sessionFullAnswerLoading: questionId });
+    try {
+      const { data } = await api.post<{ answer: string }>('/api/exam/answer', { questionId });
+      set(state => ({
+        sessionFullAnswers: { ...state.sessionFullAnswers, [questionId]: data.answer },
+        sessionFullAnswerLoading: null,
+      }));
+    } catch {
+      set({ sessionFullAnswerLoading: null });
+    }
+  },
+
   setExamDifficulty: (d) => set({ examDifficulty: Math.max(1, Math.min(5, d)) }),
+
+  setRequestedCount: (n) => set({ requestedCount: n }),
+
+  persistExamState: (sessionId) => {
+    const { sessionBatch, sessionBankAll, sessionBankOffset, sessionAnswers, sessionHints, sessionFullAnswers, examDifficulty, requestedCount } = get();
+    try {
+      localStorage.setItem(
+        'exam_practice_' + sessionId,
+        JSON.stringify({ sessionBatch, sessionBankAll, sessionBankOffset, sessionAnswers, sessionHints, sessionFullAnswers, examDifficulty, requestedCount }),
+      );
+    } catch {
+      // localStorage may be unavailable (private mode / quota exceeded)
+      // Try without full answers (they're large) as a fallback
+      try {
+        localStorage.setItem(
+          'exam_practice_' + sessionId,
+          JSON.stringify({ sessionBatch, sessionBankAll, sessionBankOffset, sessionAnswers, sessionHints, sessionFullAnswers: {}, examDifficulty, requestedCount }),
+        );
+      } catch { /* give up */ }
+    }
+  },
+
+  restoreExamState: (sessionId) => {
+    try {
+      const raw = localStorage.getItem('exam_practice_' + sessionId);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed.sessionBatch) || parsed.sessionBatch.length === 0) return false;
+      set({
+        sessionBatch: parsed.sessionBatch,
+        sessionBankAll: parsed.sessionBankAll ?? parsed.sessionBatch,
+        sessionBankOffset: parsed.sessionBankOffset ?? parsed.sessionBatch.length,
+        sessionAnswers: parsed.sessionAnswers ?? {},
+        sessionHints: parsed.sessionHints ?? {},
+        sessionFullAnswers: parsed.sessionFullAnswers ?? {},
+        examDifficulty: parsed.examDifficulty ?? 3,
+        requestedCount: parsed.requestedCount ?? 5,
+        // Reset any stuck loading states from a previous interrupted session
+        sessionBatchLoading: false,
+        sessionBatchGenerating: false,
+        sessionBatchError: null,
+        sessionFullAnswerLoading: null,
+        sessionMarkingId: null,
+        sessionHintLoading: null,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
 
   clearSessionExam: () => set({
     sessionBankAll: [],
@@ -591,8 +664,13 @@ export const useExamStore = create<ExamState>((set, get) => ({
     sessionBankOffset: 0,
     sessionAnswers: {},
     sessionHints: {},
+    sessionFullAnswers: {},
     sessionHintLoading: null,
+    sessionFullAnswerLoading: null,
     sessionMarkingId: null,
+    sessionBatchLoading: false,
+    sessionBatchGenerating: false,
+    sessionBatchError: null,
   }),
 
   extractPaper: async (files) => {

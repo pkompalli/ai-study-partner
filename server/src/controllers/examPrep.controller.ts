@@ -1,14 +1,16 @@
 import type { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import {
   createExamFormat, getExamFormat, getExamFormatsForCourse, updateExamFormat, replaceSections, deleteExamFormat,
   saveExamQuestions, deleteExamQuestions, getExamQuestions, getExamQuestionById,
   createAttempt, getAttempt, upsertAnswer, markAnswer as markAnswerDb,
   submitAttempt, getTopicReadinessForCourse,
+  getUserScoringRubric, setUserScoringRubric,
 } from '../db/examBank.db.js';
 import { getCourseContext, getCourseWithTree, getTopicName, getChapterName } from '../db/courses.db.js';
 import { inferExamFormat, generateExamQuestions, extractExamFromPaper, extractTextFromPDF } from '../services/llm/examQuestionGenerator.js';
 import type { ExtractedQuestion, ExtractedSection } from '../services/llm/examQuestionGenerator.js';
-import { markAnswer, getHint } from '../services/llm/examMarker.js';
+import { markAnswer, getHint, getFullAnswer } from '../services/llm/examMarker.js';
 
 // ─── Format CRUD ───────────────────────────────────────────────────────────────
 
@@ -422,9 +424,57 @@ export async function generateBatchHandler(req: Request, res: Response, next: Ne
 
     if (generated.length === 0) { res.status(500).json({ error: 'Failed to generate questions' }); return; }
 
-    // Append to bank (don't clear existing questions)
-    saveExamQuestions(formatId, format.course_id, generated);
-    res.json({ count: generated.length, questions: generated });
+    // Pre-generate UUIDs here so we control the IDs in both the DB row and the response.
+    // This avoids depending on saveExamQuestions returning IDs (which varies by server version).
+    const sectionMap = Object.fromEntries(format.sections.map(s => [s.id, s]));
+    const topicNameMap = Object.fromEntries(topics.map(t => [t.id, t.name]));
+    const questionsWithIds = generated.map(q => ({ ...q, _id: randomUUID() }));
+
+    // When we passed chapterId as the "topic" to the LLM, generated questions may have
+    // topic_id = chapterId — but exam_questions.topic_id FK references topics(id), not chapters.
+    // Remap it to the real topicId (nullable) so the FK constraint is satisfied.
+    const resolveTopicId = (qTopicId: string | undefined): string | undefined =>
+      chapterId && qTopicId === chapterId ? topicId : qTopicId;
+
+    // Save to bank — pass the pre-generated ID via the question object's optional id field
+    saveExamQuestions(formatId, format.course_id, questionsWithIds.map(q => ({
+      ...q,
+      id: q._id,
+      topic_id: resolveTopicId(q.topic_id),
+    })));
+
+    // Build the full ExamQuestion response objects
+    const questions = questionsWithIds.map(q => {
+      const section = sectionMap[q.section_id];
+      const resolvedTopicId = resolveTopicId(q.topic_id);
+      return {
+        id: q._id,
+        exam_format_id: formatId,
+        section_id: q.section_id,
+        section_name: section?.name ?? '',
+        section_question_type: section?.question_type ?? '',
+        topic_id: resolvedTopicId,
+        topic_name: resolvedTopicId ? topicNameMap[resolvedTopicId] : undefined,
+        course_id: format.course_id,
+        question_text: q.question_text,
+        dataset: q.dataset,
+        options: q.options,
+        correct_option_index: q.correct_option_index,
+        max_marks: q.max_marks,
+        mark_scheme: q.mark_scheme,
+        depth: 3,
+      };
+    });
+
+    // Verify the outgoing JSON is valid before sending
+    const serialized = JSON.stringify({ count: questions.length, questions });
+    const bs = (serialized.match(/\\./g) ?? []).filter(s => !'\\"\\/bfnrtu0123456789'.includes(s[1]));
+    if (bs.length > 0) {
+      console.error('[batch] WARNING: invalid escape sequences in response:', bs.slice(0, 5));
+    }
+    console.log(`[batch] sending ${questions.length} questions, JSON bytes=${serialized.length}, valid=${bs.length === 0}`);
+
+    res.json({ count: questions.length, questions });
   } catch (err) { next(err); }
 }
 
@@ -468,6 +518,7 @@ export async function markStandaloneHandler(req: Request, res: Response, next: N
       ? (question.options?.[selectedOptionIndex ?? -1] ?? answerText ?? '')
       : ((answerText ?? '') + (pdfTextAppend ? `\n\n[Uploaded document content:]\n${pdfTextAppend}` : ''));
 
+    const customRubric = getUserScoringRubric(req.user!.id);
     const result = await markAnswer({
       questionText: question.question_text,
       questionType: question.section_question_type,
@@ -475,12 +526,52 @@ export async function markStandaloneHandler(req: Request, res: Response, next: N
       markScheme: question.mark_scheme,
       maxMarks: question.max_marks,
       studentAnswer,
+      customRubric: customRubric || undefined,
       correctOptionIndex: question.correct_option_index,
       selectedOptionIndex,
       images,
     });
 
     res.json({ score: result.score, maxMarks: question.max_marks, feedback: result.feedback });
+  } catch (err) { next(err); }
+}
+
+// ─── Full worked answer (no attempt required) ─────────────────────────────────
+
+export async function getFullAnswerHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { questionId } = req.body as { questionId: string };
+    if (!questionId) { res.status(400).json({ error: 'questionId required' }); return; }
+
+    const question = getExamQuestionById(questionId);
+    if (!question) { res.status(404).json({ error: 'Question not found' }); return; }
+
+    const answer = await getFullAnswer({
+      questionText: question.question_text,
+      questionType: question.section_question_type,
+      dataset: question.dataset,
+      markScheme: question.mark_scheme,
+      maxMarks: question.max_marks,
+    });
+
+    res.json({ answer });
+  } catch (err) { next(err); }
+}
+
+// ─── User settings ─────────────────────────────────────────────────────────────
+
+export async function getSettingsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const rubric = getUserScoringRubric(req.user!.id);
+    res.json({ scoringRubric: rubric });
+  } catch (err) { next(err); }
+}
+
+export async function updateSettingsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { scoringRubric } = req.body as { scoringRubric?: string };
+    setUserScoringRubric(req.user!.id, scoringRubric ?? '');
+    res.json({ ok: true });
   } catch (err) { next(err); }
 }
 
