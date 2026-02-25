@@ -190,17 +190,18 @@ export function InlineMermaid({ code }: { code: string }) {
     return <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse my-4" />;
   }
 
+  // Inject white background + block display into the SVG element so Tailwind
+  // Typography's prose context (which darkens SVG content) has no effect.
+  const renderedSvg = svg.replace(
+    /<svg\b/,
+    '<svg style="background:white;display:block;min-height:80px"',
+  );
+
   return (
+    // not-prose: escape Tailwind Typography so prose rules don't dark-style the SVG
     <div
-      className={[
-        'my-4 overflow-x-auto rounded-2xl p-5',
-        'border border-slate-100 bg-white shadow-sm',
-        '[&_svg]:max-w-full',
-        '[&_.edgeLabel]:text-xs [&_.edgeLabel]:font-medium',
-        '[&_foreignObject]:overflow-visible',
-        'max-h-[80vh] overflow-y-auto',
-      ].join(' ')}
-      dangerouslySetInnerHTML={{ __html: svg }}
+      className="not-prose my-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm max-h-[80vh]"
+      dangerouslySetInnerHTML={{ __html: renderedSvg }}
     />
   );
 }
