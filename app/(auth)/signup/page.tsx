@@ -16,7 +16,13 @@ export default function SignupPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signUp({ email, password })
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    })
     if (error) {
       setError(error.message)
       setLoading(false)
@@ -37,7 +43,7 @@ export default function SignupPage() {
         />
         <input
           type="password" value={password} onChange={e => setPassword(e.target.value)}
-          placeholder="Password (min 6 chars)" required minLength={6}
+          placeholder="Password (min 8 chars)" required minLength={8}
           className="w-full border p-2 rounded"
         />
         <button type="submit" disabled={loading}
