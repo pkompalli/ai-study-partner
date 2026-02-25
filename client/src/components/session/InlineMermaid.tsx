@@ -162,11 +162,14 @@ export function InlineMermaid({ code }: { code: string }) {
       className={[
         'my-4 overflow-x-auto rounded-2xl p-5',
         'border border-slate-100 bg-white shadow-sm',
-        '[&_svg]:max-w-full [&_svg]:h-auto',
+        // Let SVG keep its intrinsic height; only cap the width.
+        // Do NOT set h-auto — it collapses SVGs with relative height to 0.
+        '[&_svg]:max-w-full',
         // Smooth edge labels
         '[&_.edgeLabel]:text-xs [&_.edgeLabel]:font-medium',
-        // Slightly rounder node text
         '[&_foreignObject]:overflow-visible',
+        // Prevent runaway-tall diagrams from filling the page
+        'max-h-[80vh] overflow-y-auto',
       ].join(' ')}
       dangerouslySetInnerHTML={{ __html: svg }}
     />

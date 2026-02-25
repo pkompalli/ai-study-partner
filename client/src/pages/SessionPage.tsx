@@ -637,6 +637,11 @@ export function SessionPage() {
     fetchSummary(id, clamped);
   };
 
+  const handleSummaryRefresh = () => {
+    if (!id) return;
+    fetchSummary(id, summaryDepth);
+  };
+
   const handleRegenerate = async (visibleIndex: number, depth: number) => {
     try {
       await regenerateMessage(visibleIndex, depth);
@@ -731,6 +736,7 @@ export function SessionPage() {
                       onToggle={() => setSummaryCollapsed(c => !c)}
                       depth={summaryDepth}
                       onDepthChange={handleSummaryDepthChange}
+                      onRefresh={handleSummaryRefresh}
                     />
                   )}
                   {!hasSummary && visibleMessages.length === 0 && (

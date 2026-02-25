@@ -1,4 +1,4 @@
-import { Minus, Plus, ChevronDown, ChevronUp } from 'lucide-react';
+import { Minus, Plus, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
 import { useTypewriter } from '@/hooks/useTypewriter';
 import { RichMessageContent } from './RichMessageContent';
@@ -19,6 +19,7 @@ interface TopicSummaryProps {
   onToggle: () => void;
   depth: number;
   onDepthChange: (newDepth: number) => void;
+  onRefresh: () => void;
 }
 
 export function TopicSummary({
@@ -29,6 +30,7 @@ export function TopicSummary({
   onToggle,
   depth,
   onDepthChange,
+  onRefresh,
 }: TopicSummaryProps) {
   const displayed = useTypewriter(isStreaming ? streamingContent : '');
 
@@ -46,6 +48,14 @@ export function TopicSummary({
         <div className="flex items-center gap-2">
           {isStreaming && <Spinner className="h-3.5 w-3.5 text-primary-500" />}
           <span className="text-xs text-primary-500 font-medium">{DEPTH_LABELS[depth]}</span>
+          <button
+            onClick={onRefresh}
+            disabled={isStreaming}
+            className="h-6 w-6 rounded-md flex items-center justify-center text-primary-500 hover:bg-primary-100 hover:text-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Regenerate"
+          >
+            <RotateCcw className="h-3 w-3" />
+          </button>
           <div className="flex items-center gap-1">
             <button
               onClick={() => onDepthChange(depth - 1)}
