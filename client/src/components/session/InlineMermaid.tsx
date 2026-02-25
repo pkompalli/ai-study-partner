@@ -117,6 +117,22 @@ function getMermaid() {
   return initPromise;
 }
 
+// ── Sanitise node labels ──────────────────────────────────────────────────────
+// The LLM occasionally puts LaTeX ($...$, \ce{}) or raw parentheses inside
+// Mermaid node labels, causing the parser to truncate or fail. Strip those
+// before rendering so old cached content also displays correctly.
+function sanitiseMermaidCode(code: string): string {
+  return code
+    // Remove inline math delimiters ($...$) — keep the inner text
+    .replace(/\$([^$\n]+)\$/g, '$1')
+    // Remove \ce{...} chemistry — keep the inner text
+    .replace(/\\ce\{([^}]*)\}/g, '$1')
+    // Remove remaining bare backslash-commands like \Delta, \alpha etc.
+    .replace(/\\([A-Za-z]+)/g, (_, name) => name)
+    // Remove leftover $$ delimiters
+    .replace(/\$\$/g, '');
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function InlineMermaid({ code }: { code: string }) {
   const uid = useId().replace(/:/g, '');
@@ -129,14 +145,15 @@ export function InlineMermaid({ code }: { code: string }) {
     setError(false);
     setSvg('');
 
+    const clean = sanitiseMermaidCode(code);
     getMermaid()
       .then(async m => {
-        // Try with semantic colours first; fall back to plain code if classDef
-        // injection caused a parse error (e.g. unexpected diagram type).
+        // Try with semantic colours first; fall back to plain (but still sanitised)
+        // code if classDef injection caused a parse error.
         try {
-          return await m.render(id, addSemanticClasses(code));
+          return await m.render(id, addSemanticClasses(clean));
         } catch {
-          return await m.render(id, code);
+          return await m.render(id, clean);
         }
       })
       .then(({ svg: rendered }) => { if (!cancelled) setSvg(rendered); })

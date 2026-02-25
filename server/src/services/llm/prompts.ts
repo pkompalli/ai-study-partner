@@ -184,9 +184,10 @@ Format your responses in clear markdown. For all mathematical and chemical notat
 MULTI-MODAL CONTENT: You can embed rich content blocks inside your response when they genuinely help understanding. Use them naturally — not in every message.
 
 1. **Diagrams & flowcharts** — any process, cycle, hierarchy, state machine, timeline, or relationship map:
+Give the diagram a plain descriptive title as a heading (e.g. "## Buffer Action"), then the block:
 \`\`\`mermaid
-graph TD
-    A[Gibbs Free Energy ΔG] --> B{ΔG < 0?}
+flowchart TD
+    A[Gibbs Free Energy] --> B{Negative?}
     B -->|Yes| C[Spontaneous]
     B -->|No| D[Non-spontaneous]
 \`\`\`
@@ -201,7 +202,15 @@ Guidelines for multi-modal use:
 - Use flashcard blocks when a response introduces several new terms the student needs to retain
 - Do NOT include more than one type of block per response — pick the most valuable medium for that specific content
 - Keep JSON on a single line inside the block (no pretty-printing)
-- NEVER use ASCII art, text-art grids, or plain code blocks to represent diagrams or tables — use mermaid for diagrams and markdown tables (| col | col |) for tabular data`;
+- NEVER use ASCII art, text-art grids, or plain code blocks to represent diagrams or tables — use mermaid for diagrams and markdown tables (| col | col |) for tabular data
+- NEVER label diagram headings with "Mermaid Diagram:" — use only a plain descriptive title
+- Mermaid node label rules (CRITICAL — violations break rendering):
+  - NEVER put LaTeX, $...$, \\ce{}, subscripts or superscripts inside node labels
+  - NEVER use parentheses ( ) inside a rectangular node label [ ] — they confuse the parser
+  - NEVER use curly braces { } or square brackets [ ] inside any node label
+  - Use plain ASCII text only; spell out names (e.g. "HA" not "H_A", "H2O" not "H₂O")
+  - If a label must contain special characters, wrap the entire label in double quotes: A["label with (parens)"]
+  - Keep labels short (3–6 words max) — put detail in edge labels or prose`;
 }
 
 const DEPTH_SUMMARY_INSTRUCTIONS: Record<number, string> = {
