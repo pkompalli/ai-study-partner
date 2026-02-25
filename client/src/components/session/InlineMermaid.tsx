@@ -1,68 +1,79 @@
 import { useEffect, useId, useState } from 'react';
 
 // ── Semantic colour palette ───────────────────────────────────────────────────
-// Each node shape gets a meaningful colour so diagrams are self-explanatory at
-// a glance without the reader needing to decode shape conventions alone.
 const SEMANTIC: Record<string, string> = {
-  terminal: 'fill:#6366f1,stroke:#4338ca,color:#fff,stroke-width:2px',   // indigo  — start / end
-  decision: 'fill:#f59e0b,stroke:#b45309,color:#fff,stroke-width:2px',   // amber   — diamonds / conditions
-  process:  'fill:#3b82f6,stroke:#1d4ed8,color:#fff,stroke-width:2px',   // blue    — rectangles / steps
-  io:       'fill:#10b981,stroke:#065f46,color:#fff,stroke-width:2px',   // teal    — rounded / parallelogram
-  database: 'fill:#8b5cf6,stroke:#5b21b6,color:#fff,stroke-width:2px',   // purple  — cylinders / storage
+  terminal: 'fill:#6366f1,stroke:#4338ca,color:#fff,stroke-width:2px',
+  decision: 'fill:#f59e0b,stroke:#b45309,color:#fff,stroke-width:2px',
+  process:  'fill:#3b82f6,stroke:#1d4ed8,color:#fff,stroke-width:2px',
+  io:       'fill:#10b981,stroke:#065f46,color:#fff,stroke-width:2px',
+  database: 'fill:#8b5cf6,stroke:#5b21b6,color:#fff,stroke-width:2px',
 };
 
-// Words that look like node IDs but are Mermaid keywords
 const KEYWORDS = new Set([
   'subgraph', 'classDef', 'class', 'style', 'linkStyle',
   'click', 'end', 'direction', 'LR', 'RL', 'TB', 'TD', 'BT',
 ]);
 
-// ── Shape → semantic category ─────────────────────────────────────────────────
+// ── Sanitise Mermaid code before parsing ─────────────────────────────────────
+// The LLM often puts LaTeX / nested brackets inside node labels which breaks
+// the Mermaid parser. Strip / fix all of those defensively.
+function sanitiseMermaidCode(code: string): string {
+  let s = code
+    // Remove display math $$...$$ — keep inner text
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_, b) => b.trim())
+    // Remove inline math $...$ — keep inner text
+    .replace(/\$([^$\n]+)\$/g, '$1')
+    // Remove \ce{...} — keep inner text
+    .replace(/\\ce\{([^}]*)\}/g, '$1')
+    // Remove other \cmd{content} — keep content
+    .replace(/\\[A-Za-z]+\{([^}]*)\}/g, '$1')
+    // Remove bare \commands like \Delta, \alpha, \frac etc.
+    .replace(/\\[A-Za-z]+/g, '')
+    // Remove any stray $ that remain
+    .replace(/\$/g, '');
+
+  // Fix nested [ ] inside rectangular node labels.
+  // e.g.  C[Increase [H3O+], [OH-]]  →  C[Increase (H3O+), (OH-)]
+  // The outer [label] is the node shape; inner [ ] break the parser.
+  s = s.replace(
+    /(\b\w+\s*)\[([^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*)\]/g,
+    (_, nodeId, label) => {
+      // Replace any remaining [ ] inside the label with ( )
+      const fixed = label.replace(/\[([^\[\]]*)\]/g, '($1)');
+      return `${nodeId}[${fixed}]`;
+    },
+  );
+
+  return s;
+}
+
+// ── Semantic classDef injection ───────────────────────────────────────────────
 function detectNodeCategories(code: string): Map<string, string> {
   const cats = new Map<string, string>();
-
   function add(id: string, cat: string) {
     if (!id || KEYWORDS.has(id) || cats.has(id)) return;
     cats.set(id, cat);
   }
-
-  // Terminal — stadium  nodeId([   or double-circle  nodeId((
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\(\[/g))  add(m[1], 'terminal');
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\(\(/g))  add(m[1], 'terminal');
-
-  // Database — cylinder  nodeId[(
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[\(/g))  add(m[1], 'database');
-
-  // Decision — diamond  nodeId{   (hexagon nodeId{{ is also treated as decision)
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\{/g))    add(m[1], 'decision');
-
-  // I/O — parallelogram  nodeId[/  or  nodeId[\
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[[\\/]/g)) add(m[1], 'io');
-
-  // I/O — rounded rect  nodeId(   (but NOT  ((  or  ([  already captured above)
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\((?!\[|\()/g)) add(m[1], 'io');
-
-  // Process — plain rectangle  nodeId[   (but NOT  [(  or  [/  or  [\  already captured)
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[(?![(\\\/])/g)) add(m[1], 'process');
-
   return cats;
 }
 
-// ── Inject classDef + class statements ───────────────────────────────────────
 function addSemanticClasses(code: string): string {
   const trimmed = code.trim();
-  // Only flowchart / graph diagrams support classDef
   if (!/^(flowchart|graph)\s/mi.test(trimmed)) return trimmed;
-  // Respect diagrams the author already styled
   if (/\bclassDef\b/i.test(trimmed)) return trimmed;
 
   const cats = detectNodeCategories(trimmed);
   if (cats.size === 0) return trimmed;
 
   const usedCats = new Set(cats.values());
-  const defs = [...usedCats]
-    .map(c => `  classDef ${c} ${SEMANTIC[c]}`)
-    .join('\n');
+  const defs = [...usedCats].map(c => `  classDef ${c} ${SEMANTIC[c]}`).join('\n');
 
   const byClass = new Map<string, string[]>();
   for (const [id, c] of cats) {
@@ -76,7 +87,7 @@ function addSemanticClasses(code: string): string {
   return `${trimmed}\n${defs}\n${assigns}`;
 }
 
-// ── Singleton initialisation — avoids race condition with parallel renders ────
+// ── Mermaid singleton ─────────────────────────────────────────────────────────
 let initPromise: Promise<typeof import('mermaid').default> | null = null;
 
 function getMermaid() {
@@ -87,29 +98,19 @@ function getMermaid() {
         securityLevel: 'loose',
         theme: 'base',
         themeVariables: {
-          // Unclassified nodes — light blue tint with dark text
           primaryColor:        '#eff6ff',
           primaryTextColor:    '#1e3a5f',
           primaryBorderColor:  '#93c5fd',
-          // Edges
           lineColor:           '#64748b',
-          // Edge label chip
           edgeLabelBackground: '#f8fafc',
-          // Secondary / tertiary fill (used in some diagram types)
           secondaryColor:      '#f0fdf4',
           tertiaryColor:       '#fefce8',
-          // Subgraph cluster
           clusterBkg:          '#f8fafc',
           clusterBorder:       '#cbd5e1',
-          // Typography
           fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
           fontSize:   '14px',
         },
-        flowchart: {
-          curve:      'basis',   // smooth bezier edges
-          htmlLabels: true,
-          padding:    18,
-        },
+        flowchart: { curve: 'basis', htmlLabels: true, padding: 18 },
       });
       return m.default;
     });
@@ -117,20 +118,17 @@ function getMermaid() {
   return initPromise;
 }
 
-// ── Sanitise node labels ──────────────────────────────────────────────────────
-// The LLM occasionally puts LaTeX ($...$, \ce{}) or raw parentheses inside
-// Mermaid node labels, causing the parser to truncate or fail. Strip those
-// before rendering so old cached content also displays correctly.
-function sanitiseMermaidCode(code: string): string {
-  return code
-    // Remove inline math delimiters ($...$) — keep the inner text
-    .replace(/\$([^$\n]+)\$/g, '$1')
-    // Remove \ce{...} chemistry — keep the inner text
-    .replace(/\\ce\{([^}]*)\}/g, '$1')
-    // Remove remaining bare backslash-commands like \Delta, \alpha etc.
-    .replace(/\\([A-Za-z]+)/g, (_, name) => name)
-    // Remove leftover $$ delimiters
-    .replace(/\$\$/g, '');
+// Remove any orphaned Mermaid elements left in the DOM after a failed render.
+// Mermaid v11 creates #d<id> wrappers in the body that it doesn't always clean up.
+function purgeMermaidElements(id: string) {
+  document.getElementById(id)?.remove();
+  document.getElementById(`d${id}`)?.remove();
+}
+
+// Mermaid v11 sometimes resolves (rather than rejects) with an SVG that contains
+// the error text. Detect that so we can fall through to a nicer fallback.
+function isMermaidErrorSvg(svg: string) {
+  return svg.includes('Syntax error') || svg.includes('mermaid version');
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -146,27 +144,46 @@ export function InlineMermaid({ code }: { code: string }) {
     setSvg('');
 
     const clean = sanitiseMermaidCode(code);
+
+    async function render(m: Awaited<ReturnType<typeof getMermaid>>) {
+      // 1. Try with semantic class injection
+      try {
+        const r = await m.render(id, addSemanticClasses(clean));
+        if (!isMermaidErrorSvg(r.svg)) return r.svg;
+      } catch { /* fall through */ }
+      purgeMermaidElements(id);
+
+      // 2. Fall back to plain sanitised code (no classDef)
+      try {
+        const r = await m.render(id, clean);
+        if (!isMermaidErrorSvg(r.svg)) return r.svg;
+      } catch { /* fall through */ }
+      purgeMermaidElements(id);
+
+      return null; // signal failure
+    }
+
     getMermaid()
-      .then(async m => {
-        // Try with semantic colours first; fall back to plain (but still sanitised)
-        // code if classDef injection caused a parse error.
-        try {
-          return await m.render(id, addSemanticClasses(clean));
-        } catch {
-          return await m.render(id, clean);
-        }
+      .then(m => render(m))
+      .then(result => {
+        if (cancelled) return;
+        if (result) setSvg(result);
+        else setError(true);
       })
-      .then(({ svg: rendered }) => { if (!cancelled) setSvg(rendered); })
       .catch(() => { if (!cancelled) setError(true); });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      purgeMermaidElements(id);
+    };
   }, [id, code]);
 
   if (error) {
+    // Quiet fallback — show a neutral placeholder rather than the raw code
     return (
-      <pre className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3 overflow-x-auto my-2">
-        {code}
-      </pre>
+      <div className="my-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-400 italic">
+        Diagram unavailable
+      </div>
     );
   }
 
@@ -179,13 +196,9 @@ export function InlineMermaid({ code }: { code: string }) {
       className={[
         'my-4 overflow-x-auto rounded-2xl p-5',
         'border border-slate-100 bg-white shadow-sm',
-        // Let SVG keep its intrinsic height; only cap the width.
-        // Do NOT set h-auto — it collapses SVGs with relative height to 0.
         '[&_svg]:max-w-full',
-        // Smooth edge labels
         '[&_.edgeLabel]:text-xs [&_.edgeLabel]:font-medium',
         '[&_foreignObject]:overflow-visible',
-        // Prevent runaway-tall diagrams from filling the page
         'max-h-[80vh] overflow-y-auto',
       ].join(' ')}
       dangerouslySetInnerHTML={{ __html: svg }}
