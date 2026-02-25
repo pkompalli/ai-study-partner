@@ -639,7 +639,7 @@ export function SessionPage() {
 
   const handleSummaryRefresh = () => {
     if (!id) return;
-    fetchSummary(id, summaryDepth);
+    fetchSummary(id, summaryDepth, true); // force=true bypasses server cache
   };
 
   const handleRegenerate = async (visibleIndex: number, depth: number) => {

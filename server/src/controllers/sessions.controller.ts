@@ -215,9 +215,11 @@ export async function getSessionSummary(req: Request, res: Response, next: NextF
     }
 
     // Serve from cache if available — chapter cache takes priority over topic cache
-    const cached = chapterId
+    // Skip cache when ?force=true (user explicitly requested regeneration)
+    const force = req.query['force'] === 'true';
+    const cached = force ? null : (chapterId
       ? getCachedChapterSummary(userId, chapterId, depth)
-      : (topicId ? getCachedSummary(userId, topicId, depth) : null);
+      : (topicId ? getCachedSummary(userId, topicId, depth) : null));
 
     if (cached) {
       res.setHeader('Content-Type', 'text/event-stream');

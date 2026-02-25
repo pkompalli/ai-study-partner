@@ -36,7 +36,7 @@ interface SessionState {
   submitQuizAnswers: (quizId: string, answers: Record<string, number>) => Promise<{ score: number; total: number }>;
   endSession: () => Promise<string>;
   clearSession: () => void;
-  fetchSummary: (sessionId: string, depth?: number) => Promise<void>;
+  fetchSummary: (sessionId: string, depth?: number, force?: boolean) => Promise<void>;
   fetchPills: (sessionId: string) => Promise<void>;
   fetchTopicBank: (sessionId: string) => Promise<void>;
   saveCardFromQuestion: (question: string, answer: string, explanation: string) => Promise<Flashcard | null>;
@@ -221,7 +221,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
   },
 
-  fetchSummary: async (sessionId, depth = 0) => {
+  fetchSummary: async (sessionId, depth = 0, force = false) => {
     // Optimistic label update — if user explicitly picked a depth, show it immediately
     if (depth > 0) {
       set({ summaryDepth: depth });
@@ -229,7 +229,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ summaryStreaming: true, summaryStreamingContent: '', topicSummary: null });
 
     try {
-      const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/summary?depth=${depth}`, {
+      const url = `${API_BASE}/api/sessions/${sessionId}/summary?depth=${depth}${force ? '&force=true' : ''}`;
+      const response = await fetch(url, {
         headers: authHeaders(),
       });
 
