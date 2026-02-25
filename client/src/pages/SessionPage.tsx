@@ -12,6 +12,7 @@ import { FlashcardDeck } from '@/components/flashcards/FlashcardDeck';
 import { Spinner } from '@/components/ui/Spinner';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import type { ExamQuestion } from '@/types';
 
@@ -26,18 +27,22 @@ const DIFFICULTY_LABELS: Record<number, string> = {
  */
 function preprocessLatex(content: string): string {
   if (!content) return content;
-  // Step 1: protect already-delimited math blocks from double-processing
+  // Step 1: convert \[...\] → $$...$$ and \(...\) → $...$ before markdown strips backslashes
+  let s = content
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, body) => `$$${body}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, body) => `$${body}$`);
+  // Step 2: protect already-valid $...$ / $$...$$ blocks from double-processing
   const saved: string[] = [];
-  let s = content.replace(
-    /\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\$[^$\n]+\$/g,
+  s = s.replace(
+    /\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g,
     (m) => { saved.push(m); return `\x02${saved.length - 1}\x03`; },
   );
-  // Step 2: wrap bare \begin{env}...\end{env} blocks in $$...$$
+  // Step 3: wrap bare \begin{env}...\end{env} blocks in $$...$$
   s = s.replace(
     /\\begin\{([^}]+)\}([\s\S]*?)\\end\{\1\}/g,
     (_, env, body) => `\n$$\n\\begin{${env}}${body}\\end{${env}}\n$$\n`,
   );
-  // Step 3: restore the protected blocks
+  // Step 4: restore the protected blocks
   return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i]);
 }
 
@@ -255,7 +260,7 @@ function ExamQuestionCard({
           <div className="bg-gray-50 rounded-lg p-3 text-xs border border-gray-200 overflow-x-auto">
             <ReactMarkdown
               className="prose prose-xs max-w-none text-gray-700"
-              remarkPlugins={[remarkMath]}
+              remarkPlugins={[remarkMath, remarkGfm]}
               rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
             >{preprocessLatex(question.dataset)}</ReactMarkdown>
           </div>
@@ -264,7 +269,7 @@ function ExamQuestionCard({
         <div className="text-sm text-gray-900 font-medium leading-relaxed">
           <ReactMarkdown
             className="prose prose-sm max-w-none"
-            remarkPlugins={[remarkMath]}
+            remarkPlugins={[remarkMath, remarkGfm]}
             rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
           >{preprocessLatex(question.question_text)}</ReactMarkdown>
         </div>
@@ -294,7 +299,7 @@ function ExamQuestionCard({
                   <span className="flex-1">
                     <ReactMarkdown
                       components={{ p: ({ children }) => <>{children}</> }}
-                      remarkPlugins={[remarkMath]}
+                      remarkPlugins={[remarkMath, remarkGfm]}
                       rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
                     >{preprocessLatex(opt)}</ReactMarkdown>
                   </span>
@@ -359,7 +364,7 @@ function ExamQuestionCard({
             {localAnswer.feedback && (
               <ReactMarkdown
                 className="prose prose-xs max-w-none text-xs text-gray-700 leading-relaxed"
-                remarkPlugins={[remarkMath]}
+                remarkPlugins={[remarkMath, remarkGfm]}
                 rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
               >{preprocessLatex(localAnswer.feedback)}</ReactMarkdown>
             )}
@@ -376,7 +381,7 @@ function ExamQuestionCard({
               <Lightbulb className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
               <ReactMarkdown
                 className="prose prose-xs max-w-none text-xs text-amber-800 leading-relaxed"
-                remarkPlugins={[remarkMath]}
+                remarkPlugins={[remarkMath, remarkGfm]}
                 rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
               >{preprocessLatex(hint.text)}</ReactMarkdown>
             </div>
@@ -392,7 +397,7 @@ function ExamQuestionCard({
             </div>
             <ReactMarkdown
               className="prose prose-xs max-w-none text-xs text-emerald-900 leading-relaxed"
-              remarkPlugins={[remarkMath]}
+              remarkPlugins={[remarkMath, remarkGfm]}
               rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
             >{preprocessLatex(fullAnswer)}</ReactMarkdown>
           </div>

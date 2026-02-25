@@ -1,7 +1,7 @@
 import { Minus, Plus, ChevronDown, ChevronUp } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import { Spinner } from '@/components/ui/Spinner';
 import { useTypewriter } from '@/hooks/useTypewriter';
+import { RichMessageContent } from './RichMessageContent';
 
 const DEPTH_LABELS: Record<number, string> = {
   1: 'Key Points',
@@ -81,9 +81,7 @@ export function TopicSummary({
               <span className="inline-block w-0.5 h-4 bg-primary-400 ml-0.5 align-middle animate-pulse" />
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none text-gray-800">
-              <ReactMarkdown>{summary}</ReactMarkdown>
-            </div>
+            <RichMessageContent content={summary} />
           )}
         </div>
       )}

@@ -1,11 +1,44 @@
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
 import { InlineMermaid } from './InlineMermaid';
 import { InlineQuiz } from './InlineQuiz';
 import { InlineFlashcards } from './InlineFlashcards';
+
+/**
+ * Normalise LaTeX delimiters so remark-math can process everything:
+ *  - \[...\]  →  $$...$$  (display math)
+ *  - \(...\)  →  $...$    (inline math)
+ *  - bare \begin{env}...\end{env}  →  wrapped in $$...$$
+ * Existing $...$ / $$...$$ blocks are protected from double-processing.
+ */
+function preprocessLatex(content: string): string {
+  if (!content) return content;
+
+  // Step 1: convert \[...\] and \(...\) BEFORE markdown can strip the backslashes
+  let s = content
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, body) => `$$${body}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, body) => `$${body}$`);
+
+  // Step 2: protect already-valid $...$ / $$...$$ blocks
+  const saved: string[] = [];
+  s = s.replace(
+    /\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g,
+    (m) => { saved.push(m); return `\x02${saved.length - 1}\x03`; },
+  );
+
+  // Step 3: wrap bare \begin{env}...\end{env} in $$...$$
+  s = s.replace(
+    /\\begin\{([^}]+)\}([\s\S]*?)\\end\{\1\}/g,
+    (_, env, body) => `\n$$\n\\begin{${env}}${body}\\end{${env}}\n$$\n`,
+  );
+
+  // Step 4: restore protected blocks
+  return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i]);
+}
 
 function makeComponents(invert?: boolean): Components {
   return {
@@ -66,10 +99,10 @@ export function RichMessageContent({ content, invert }: Props) {
   return (
     <div className={cn('prose prose-sm max-w-none', invert && 'prose-invert')}>
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkMath, remarkGfm]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
         components={makeComponents(invert)}
-      >{content}</ReactMarkdown>
+      >{preprocessLatex(content)}</ReactMarkdown>
     </div>
   );
 }

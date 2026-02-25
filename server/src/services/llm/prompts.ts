@@ -200,7 +200,8 @@ Guidelines for multi-modal use:
 - Use mermaid whenever you'd otherwise describe a process sequentially in words — a diagram communicates it faster
 - Use flashcard blocks when a response introduces several new terms the student needs to retain
 - Do NOT include more than one type of block per response — pick the most valuable medium for that specific content
-- Keep JSON on a single line inside the block (no pretty-printing)`;
+- Keep JSON on a single line inside the block (no pretty-printing)
+- NEVER use ASCII art, text-art grids, or plain code blocks to represent diagrams or tables — use mermaid for diagrams and markdown tables (| col | col |) for tabular data`;
 }
 
 const DEPTH_SUMMARY_INSTRUCTIONS: Record<number, string> = {
