@@ -37,6 +37,8 @@ function preprocessLatex(content: string): string {
     /\$\$[\s\S]*?\$\$|\$[^$\n]+\$/g,
     (m) => { saved.push(m); return `\x02${saved.length - 1}\x03`; },
   );
+  // Step 2b: wrap standalone \ce{...} outside math in $...$
+  s = s.replace(/\\ce\{([^}]*)\}/g, match => `$${match}$`);
   // Step 3: wrap bare \begin{env}...\end{env} blocks in $$...$$
   s = s.replace(
     /\\begin\{([^}]+)\}([\s\S]*?)\\end\{\1\}/g,

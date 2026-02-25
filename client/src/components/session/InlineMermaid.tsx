@@ -14,34 +14,21 @@ const KEYWORDS = new Set([
   'click', 'end', 'direction', 'LR', 'RL', 'TB', 'TD', 'BT',
 ]);
 
-// ── Sanitise Mermaid code before parsing ─────────────────────────────────────
-// The LLM often puts LaTeX / nested brackets inside node labels which breaks
-// the Mermaid parser. Strip / fix all of those defensively.
+// ── Sanitise code before parsing ─────────────────────────────────────────────
 function sanitiseMermaidCode(code: string): string {
   let s = code
-    // Remove display math $$...$$ — keep inner text
     .replace(/\$\$([\s\S]*?)\$\$/g, (_, b) => b.trim())
-    // Remove inline math $...$ — keep inner text
     .replace(/\$([^$\n]+)\$/g, '$1')
-    // Remove \ce{...} — keep inner text
     .replace(/\\ce\{([^}]*)\}/g, '$1')
-    // Remove other \cmd{content} — keep content
     .replace(/\\[A-Za-z]+\{([^}]*)\}/g, '$1')
-    // Remove bare \commands like \Delta, \alpha, \frac etc.
     .replace(/\\[A-Za-z]+/g, '')
-    // Remove any stray $ that remain
     .replace(/\$/g, '');
 
-  // Fix nested [ ] inside rectangular node labels.
+  // Fix nested [ ] inside rectangular node labels — parser chokes on them
   // e.g.  C[Increase [H3O+], [OH-]]  →  C[Increase (H3O+), (OH-)]
-  // The outer [label] is the node shape; inner [ ] break the parser.
   s = s.replace(
     /(\b\w+\s*)\[([^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*)\]/g,
-    (_, nodeId, label) => {
-      // Replace any remaining [ ] inside the label with ( )
-      const fixed = label.replace(/\[([^\[\]]*)\]/g, '($1)');
-      return `${nodeId}[${fixed}]`;
-    },
+    (_, nodeId, label) => `${nodeId}[${label.replace(/\[([^\[\]]*)\]/g, '($1)')}]`,
   );
 
   return s;
@@ -54,12 +41,12 @@ function detectNodeCategories(code: string): Map<string, string> {
     if (!id || KEYWORDS.has(id) || cats.has(id)) return;
     cats.set(id, cat);
   }
-  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\(\[/g))  add(m[1], 'terminal');
-  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\(\(/g))  add(m[1], 'terminal');
-  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[\(/g))  add(m[1], 'database');
-  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\{/g))    add(m[1], 'decision');
-  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[[\\/]/g)) add(m[1], 'io');
-  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\((?!\[|\()/g)) add(m[1], 'io');
+  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\(\[/g))          add(m[1], 'terminal');
+  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\(\(/g))          add(m[1], 'terminal');
+  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[\(/g))          add(m[1], 'database');
+  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\{/g))            add(m[1], 'decision');
+  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[[\\/]/g))       add(m[1], 'io');
+  for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\((?!\[|\()/g))   add(m[1], 'io');
   for (const m of code.matchAll(/\b([A-Za-z_][\w]*)\s*\[(?![(\\\/])/g)) add(m[1], 'process');
   return cats;
 }
@@ -118,17 +105,34 @@ function getMermaid() {
   return initPromise;
 }
 
-// Remove any orphaned Mermaid elements left in the DOM after a failed render.
-// Mermaid v11 creates #d<id> wrappers in the body that it doesn't always clean up.
-function purgeMermaidElements(id: string) {
-  document.getElementById(id)?.remove();
-  document.getElementById(`d${id}`)?.remove();
+// Mermaid v11 sometimes resolves (not rejects) with a "Syntax error" SVG.
+function isMermaidErrorSvg(svg: string) {
+  const l = svg.toLowerCase();
+  return l.includes('syntax error') || l.includes('parse error') || l.includes('mermaid version');
 }
 
-// Mermaid v11 sometimes resolves (rather than rejects) with an SVG that contains
-// the error text. Detect that so we can fall through to a nicer fallback.
-function isMermaidErrorSvg(svg: string) {
-  return svg.includes('Syntax error') || svg.includes('mermaid version');
+// ── Safe render helper ────────────────────────────────────────────────────────
+// Passes an owned container as svgContainingElement so Mermaid never injects
+// error output into document.body.  The container is removed in `finally`
+// regardless of success or failure.
+async function safeRender(
+  m: Awaited<ReturnType<typeof getMermaid>>,
+  renderId: string,
+  code: string,
+): Promise<string | null> {
+  const container = document.createElement('div');
+  container.style.cssText =
+    'position:absolute;visibility:hidden;pointer-events:none;top:-9999px;left:-9999px';
+  document.body.appendChild(container);
+  try {
+    const result = await m.render(renderId, code, container);
+    const svg = result?.svg ?? '';
+    return isMermaidErrorSvg(svg) ? null : svg || null;
+  } catch {
+    return null;
+  } finally {
+    container.remove();
+  }
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -145,41 +149,21 @@ export function InlineMermaid({ code }: { code: string }) {
 
     const clean = sanitiseMermaidCode(code);
 
-    async function render(m: Awaited<ReturnType<typeof getMermaid>>) {
-      // 1. Try with semantic class injection
-      try {
-        const r = await m.render(id, addSemanticClasses(clean));
-        if (!isMermaidErrorSvg(r.svg)) return r.svg;
-      } catch { /* fall through */ }
-      purgeMermaidElements(id);
-
-      // 2. Fall back to plain sanitised code (no classDef)
-      try {
-        const r = await m.render(id, clean);
-        if (!isMermaidErrorSvg(r.svg)) return r.svg;
-      } catch { /* fall through */ }
-      purgeMermaidElements(id);
-
-      return null; // signal failure
-    }
-
-    getMermaid()
-      .then(m => render(m))
-      .then(result => {
-        if (cancelled) return;
+    getMermaid().then(async m => {
+      // Attempt 1: with semantic colour classes
+      let result = await safeRender(m, id, addSemanticClasses(clean));
+      // Attempt 2: plain sanitised code (no classDef injection)
+      if (!result) result = await safeRender(m, id, clean);
+      if (!cancelled) {
         if (result) setSvg(result);
         else setError(true);
-      })
-      .catch(() => { if (!cancelled) setError(true); });
+      }
+    }).catch(() => { if (!cancelled) setError(true); });
 
-    return () => {
-      cancelled = true;
-      purgeMermaidElements(id);
-    };
+    return () => { cancelled = true; };
   }, [id, code]);
 
   if (error) {
-    // Quiet fallback — show a neutral placeholder rather than the raw code
     return (
       <div className="my-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-400 italic">
         Diagram unavailable

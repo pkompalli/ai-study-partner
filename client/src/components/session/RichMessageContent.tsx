@@ -30,6 +30,10 @@ function preprocessLatex(content: string): string {
     (m) => { saved.push(m); return `\x02${saved.length - 1}\x03`; },
   );
 
+  // Step 2b: wrap standalone LaTeX commands outside math in $...$
+  // \ce{...} is the most common one the LLM outputs without $ delimiters
+  s = s.replace(/\\ce\{([^}]*)\}/g, match => `$${match}$`);
+
   // Step 3: wrap bare \begin{env}...\end{env} in $$...$$
   s = s.replace(
     /\\begin\{([^}]+)\}([\s\S]*?)\\end\{\1\}/g,
