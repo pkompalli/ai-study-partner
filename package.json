@@ -8,9 +8,12 @@
     "start": "next start"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^4.0.64",
+    "@ai-sdk/openai": "^3.0.33",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.1",
     "@tailwindcss/postcss": "^4.2.1",
+    "ai": "^6.0.99",
     "axios": "^1.7.7",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",

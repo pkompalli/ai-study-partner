@@ -1,4 +1,4 @@
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import type { ChatCompletionMessageParam } from '@/lib/llm/client';
 import { chatCompletionStream, chatCompletion } from '@/lib/llm/client';
 import { buildTutorSystemPrompt } from '@/lib/llm/prompts';
 import type { SessionMessage } from '@/types';

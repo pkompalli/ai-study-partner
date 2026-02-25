@@ -64,8 +64,9 @@ export async function extractCourseFromPDF(buffer: Buffer): Promise<CourseStruct
 
 export async function extractCourseFromImages(images: { base64: string; mimeType: string }[]): Promise<CourseStructure> {
   const imageParts = images.map(img => ({
-    type: 'image_url' as const,
-    image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' as const },
+    type: 'image' as const,
+    image: img.base64,
+    mimeType: img.mimeType,
   }));
 
   console.log(`[extractCourseFromImages] sending ${images.length} image(s) to LLM`);

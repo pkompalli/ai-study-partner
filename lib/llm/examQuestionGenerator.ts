@@ -1,5 +1,4 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
 import { chatCompletion } from '@/lib/llm/client';
 import { buildExamFormatInferPrompt, buildExamQuestionPrompt, buildPaperExtractionPrompt } from '@/lib/llm/examPrompts';
 import { inferAcademicLevel } from '@/lib/llm/prompts';
@@ -117,8 +116,9 @@ export async function extractExamFromPaper(
   } else {
     // Vision: describe image content as text-like prompt
     const imageParts = source.images.map(img => ({
-      type: 'image_url' as const,
-      image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' as const },
+      type: 'image' as const,
+      image: img.base64,
+      mimeType: img.mimeType,
     }));
 
     const raw = await chatCompletion([
@@ -130,7 +130,7 @@ export async function extractExamFromPaper(
             text: buildPaperExtractionPrompt('[See attached images — extract all questions and exam format from them]'),
           },
           ...imageParts,
-        ] as ChatCompletionContentPart[],
+        ],
       },
     ], { temperature: 0.2, maxTokens: 6000 });
 

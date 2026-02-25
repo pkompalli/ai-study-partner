@@ -1,4 +1,3 @@
-import type { ChatCompletionContentPart } from 'openai/resources/chat/completions';
 import { chatCompletion } from '@/lib/llm/client';
 import { buildMarkingPrompt, buildHintPrompt, buildFullAnswerPrompt } from '@/lib/llm/examPrompts';
 import type { MarkCriterion } from '@/types';
@@ -45,12 +44,13 @@ export async function markAnswer(params: {
   });
 
   // Build message content — include uploaded images if present
-  const messageContent: string | ChatCompletionContentPart[] = params.images?.length
+  const messageContent = params.images?.length
     ? [
-        { type: 'text', text: prompt },
+        { type: 'text' as const, text: prompt },
         ...params.images.map(img => ({
-          type: 'image_url' as const,
-          image_url: { url: `data:${img.mimeType};base64,${img.base64}`, detail: 'high' as const },
+          type: 'image' as const,
+          image: img.base64,
+          mimeType: img.mimeType,
         })),
       ]
     : prompt;

@@ -1,43 +1,43 @@
-import OpenAI from 'openai';
-import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
-import { env } from '@/lib/config/env';
+import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
+import { generateText, streamText } from 'ai'
+import type { ModelMessage } from '@ai-sdk/provider-utils'
+import { env } from '@/lib/config/env'
 
-const openai = new OpenAI({
-  apiKey: env.azureOpenAI.apiKey,
-  baseURL: `${env.azureOpenAI.endpoint}/openai/deployments/${env.azureOpenAI.deploymentName}`,
-  defaultQuery: { 'api-version': env.azureOpenAI.apiVersion },
-  defaultHeaders: { 'api-key': env.azureOpenAI.apiKey },
-});
+const bedrock = createAmazonBedrock({
+  region: env.aws.region,
+  accessKeyId: env.aws.accessKeyId,
+  secretAccessKey: env.aws.secretAccessKey,
+})
 
-const DEPLOYMENT = env.azureOpenAI.deploymentName;
+const MODEL = env.aws.bedrockModel
+
+// Re-export as the name the rest of the codebase uses
+export type { ModelMessage as ChatCompletionMessageParam }
 
 export async function chatCompletion(
-  messages: ChatCompletionMessageParam[],
+  messages: ModelMessage[],
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
-  const response = await openai.chat.completions.create({
-    model: DEPLOYMENT,
+  const { text } = await generateText({
+    model: bedrock(MODEL),
     messages,
     temperature: options?.temperature ?? 0.7,
-    max_tokens: options?.maxTokens ?? 2048,
-  });
-  return response.choices[0]?.message?.content ?? '';
+    maxOutputTokens: options?.maxTokens ?? 2048,
+  })
+  return text
 }
 
 export async function* chatCompletionStream(
-  messages: ChatCompletionMessageParam[],
+  messages: ModelMessage[],
   options?: { temperature?: number; maxTokens?: number }
 ): AsyncGenerator<string> {
-  const stream = await openai.chat.completions.create({
-    model: DEPLOYMENT,
+  const { textStream } = streamText({
+    model: bedrock(MODEL),
     messages,
     temperature: options?.temperature ?? 0.7,
-    max_tokens: options?.maxTokens ?? 2048,
-    stream: true,
-  });
-
-  for await (const chunk of stream) {
-    const content = chunk.choices[0]?.delta?.content;
-    if (content) yield content;
+    maxOutputTokens: options?.maxTokens ?? 2048,
+  })
+  for await (const chunk of textStream) {
+    yield chunk
   }
 }
