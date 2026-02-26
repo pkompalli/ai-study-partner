@@ -1,7 +1,7 @@
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { createAzure } from '@ai-sdk/azure'
+import { azure } from '@ai-sdk/azure'
 import type { LanguageModel } from 'ai'
 import { env } from '@/lib/config/env'
 
@@ -22,13 +22,6 @@ const google = createGoogleGenerativeAI({
   apiKey: env.google.apiKey,
 })
 
-const azure = createAzure({
-  resourceName: env.azure.resourceName || undefined,
-  apiKey: env.azure.apiKey || undefined,
-  apiVersion: env.azure.apiVersion || undefined,
-  useDeploymentBasedUrls: true,
-})
-
 const bedrock = createAmazonBedrock({
   region: env.aws.region,
   accessKeyId: env.aws.accessKeyId,
@@ -36,7 +29,7 @@ const bedrock = createAmazonBedrock({
 })
 
 const factories: Record<ModelId, () => LanguageModel> = {
-  [MODEL_IDS.AZURE_GPT_4_1]: () => azure.chat(env.azure.gpt41Deployment),
+  [MODEL_IDS.AZURE_GPT_4_1]: () => azure.responses('azure-gpt-4.1'),
   [MODEL_IDS.OPENAI_GPT_4_1]: () => openai.chat('gpt-4.1'),
   [MODEL_IDS.GOOGLE_GEMINI_3_FLASH]: () => google.chat('gemini-3-flash-preview'),
   [MODEL_IDS.BEDROCK_CLAUDE_SONNET_4_5]: () => bedrock(env.aws.bedrockModel),

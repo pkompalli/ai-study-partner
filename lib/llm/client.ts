@@ -1,5 +1,5 @@
 import { generateText, streamText } from 'ai'
-import type { ModelMessage } from '@ai-sdk/provider-utils'
+import type { ModelMessage } from 'ai'
 import { resolveModel, type ModelId } from '@/lib/llm/registry'
 
 // Re-export as the name the rest of the codebase uses
