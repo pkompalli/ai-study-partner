@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceClient } from '@/lib/supabase/server'
 import {
   getCoursesByUser,
   createCourse,
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       sourceType?: string
       sourceFileUrl?: string
       rawInput?: string
-      structure?: unknown
+      structure?: { subjects?: Array<{ name: string; topics?: Array<{ name: string }> }> }
     }
 
     const course = await createCourse(user.id, {
@@ -50,6 +50,27 @@ export async function POST(req: NextRequest) {
       raw_input: body.rawInput,
       structure: body.structure,
     })
+
+    // Materialize structure into relational subjects/topics rows
+    const subjects = body.structure?.subjects ?? []
+    if (subjects.length > 0) {
+      const svc = await createServiceClient()
+      for (let sIdx = 0; sIdx < subjects.length; sIdx++) {
+        const subj = subjects[sIdx]
+        const { data: subjRow, error: subjErr } = await svc
+          .from('subjects')
+          .insert({ course_id: course.id, name: subj.name, sort_order: sIdx })
+          .select()
+          .single()
+        if (subjErr || !subjRow) continue
+        for (let tIdx = 0; tIdx < (subj.topics ?? []).length; tIdx++) {
+          const topic = subj.topics![tIdx]
+          await svc
+            .from('topics')
+            .insert({ subject_id: subjRow.id, course_id: course.id, name: topic.name, sort_order: tIdx })
+        }
+      }
+    }
 
     return NextResponse.json({ id: course.id }, { status: 201 })
   } catch (err: unknown) {
