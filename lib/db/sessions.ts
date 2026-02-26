@@ -103,7 +103,7 @@ export async function getSessionMessages(sessionId: string) {
   const supabase = await createServiceClient()
   const { data, error } = await supabase
     .from('session_messages')
-    .select('role, content, content_type, metadata, created_at')
+    .select('id, role, content, content_type, metadata, created_at')
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true })
   if (error) throw error
