@@ -1,4 +1,3 @@
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { chatCompletion } from '@/lib/llm/client';
 import { buildExamFormatInferPrompt, buildExamQuestionPrompt, buildPaperExtractionPrompt } from '@/lib/llm/examPrompts';
 import { inferAcademicLevel } from '@/lib/llm/prompts';
@@ -40,6 +39,8 @@ interface InferredFormat {
 // ─── Extract text from PDF ────────────────────────────────────────────────────
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  // Dynamic import to avoid module-level init errors in Next.js RSC environment
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const uint8 = new Uint8Array(buffer);
   const doc = await (pdfjsLib as unknown as { getDocument: (opts: unknown) => { promise: Promise<unknown> } })
     .getDocument({ data: uint8, verbosity: 0 }).promise as {

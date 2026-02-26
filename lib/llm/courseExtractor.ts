@@ -1,4 +1,3 @@
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { chatCompletion } from '@/lib/llm/client';
 import { COURSE_EXTRACTOR_PROMPT, PDF_COURSE_EXTRACTOR_PROMPT } from '@/lib/llm/prompts';
 import type { Subject } from '@/types';
@@ -10,6 +9,8 @@ export interface CourseStructure {
 }
 
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+  // Dynamic import to avoid module-level init errors in Next.js RSC environment
+  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const uint8 = new Uint8Array(buffer);
   const doc = await pdfjsLib.getDocument({ data: uint8, verbosity: 0 }).promise;
   const pageTexts: string[] = [];
