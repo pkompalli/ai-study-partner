@@ -16,7 +16,7 @@ export async function GET(
     const { id } = await params
 
     const topicProgress = await getTopicProgress(user.id, id)
-    const chapterProgress = await getChapterProgress(user.id, id)
+    const chapterProgress = await getChapterProgress(user.id, id).catch(() => ({}))
 
     return NextResponse.json({ topicProgress, chapterProgress })
   } catch (err: unknown) {
