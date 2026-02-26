@@ -1,8 +1,7 @@
 'use client'
 import { Minus, Plus, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { Spinner } from '@/components/ui/Spinner';
-import { useTypewriter } from '@/hooks/useTypewriter';
-import { RichMessageContent } from './RichMessageContent';
+import { StreamingMarkdown } from '@/components/ui/StreamingMarkdown';
 
 const DEPTH_LABELS: Record<number, string> = {
   1: 'Key Points',
@@ -33,8 +32,6 @@ export function TopicSummary({
   onDepthChange,
   onRefresh,
 }: TopicSummaryProps) {
-  const displayed = useTypewriter(isStreaming ? streamingContent : '');
-
   return (
     <div className="my-4 rounded-2xl border border-primary-100 bg-primary-50/40 shadow-sm overflow-hidden">
       {/* Header */}
@@ -81,18 +78,15 @@ export function TopicSummary({
       {/* Content — hidden when collapsed */}
       {!collapsed && (
         <div className="px-4 py-4">
-          {isStreaming && !displayed ? (
+          {isStreaming && !streamingContent ? (
             <div className="flex items-center justify-center py-8">
               <Spinner className="h-6 w-6 text-primary-400" />
             </div>
           ) : isStreaming ? (
-            /* Typewriter animation during streaming — prevents ReactMarkdown flickering */
-            <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-              {displayed}
-              <span className="inline-block w-0.5 h-4 bg-primary-400 ml-0.5 align-middle animate-pulse" />
-            </div>
+            /* Block-memoized markdown during streaming — smooth, no full re-render */
+            <StreamingMarkdown content={streamingContent} isStreaming />
           ) : (
-            <RichMessageContent content={summary} />
+            <StreamingMarkdown content={summary} />
           )}
         </div>
       )}

@@ -3,8 +3,7 @@ import { useRef } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingIndicator } from './StreamingIndicator';
-import { RichMessageContent } from './RichMessageContent';
-import { useTypewriter } from '@/hooks/useTypewriter';
+import { StreamingMarkdown } from '@/components/ui/StreamingMarkdown';
 import type { SessionMessage } from '@/types';
 
 interface ChatWindowProps {
@@ -23,8 +22,6 @@ export function ChatWindow({
   onRegenerate,
 }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  // Smooth character-by-character animation — decouples display from chunk arrival
-  const displayed = useTypewriter(isStreaming ? streamingContent : '');
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
@@ -35,19 +32,16 @@ export function ChatWindow({
         const isBeingRegenerated = regeneratingIndex === visibleIdx;
         const currentDepth = message.depth ?? 3;
 
-        // Regenerating in-place: plain text with cursor to avoid flicker
+        // Regenerating in-place: block-memoized markdown with cursor — no flicker
         if (isAssistant && isBeingRegenerated && isStreaming) {
           return (
             <div key={visibleIdx} className="flex gap-2 justify-start">
               <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-bold flex-shrink-0 mt-1">
                 AI
               </div>
-              {displayed ? (
+              {streamingContent ? (
                 <div className="flex-1 min-w-0 rounded-2xl rounded-bl-md px-4 py-3 bg-white border border-gray-100 shadow-sm">
-                  <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                    {displayed}
-                    <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
-                  </div>
+                  <StreamingMarkdown content={streamingContent} isStreaming />
                 </div>
               ) : (
                 <StreamingIndicator />
@@ -66,7 +60,7 @@ export function ChatWindow({
 
               <div className="relative flex-1 min-w-0">
                 <div className="rounded-2xl rounded-bl-md px-4 py-3 pr-16 bg-white border border-gray-100 text-gray-900 shadow-sm">
-                  <RichMessageContent content={message.content} />
+                  <StreamingMarkdown content={message.content} />
                 </div>
 
                 {/* Depth controls — always visible, top-right */}
@@ -102,18 +96,15 @@ export function ChatWindow({
         );
       })}
 
-      {/* Streaming new message — typewriter animation, no ReactMarkdown flicker */}
+      {/* Streaming new message — block-memoized markdown, no flicker */}
       {isStreaming && regeneratingIndex === null && (
         <div className="flex gap-2 justify-start">
           <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-xs font-bold flex-shrink-0 mt-1">
             AI
           </div>
-          {displayed ? (
+          {streamingContent ? (
             <div className="flex-1 min-w-0 rounded-2xl rounded-bl-md px-4 py-3 bg-white border border-gray-100 shadow-sm">
-              <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-                {displayed}
-                <span className="inline-block w-0.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
-              </div>
+              <StreamingMarkdown content={streamingContent} isStreaming />
             </div>
           ) : (
             <StreamingIndicator />

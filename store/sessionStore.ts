@@ -64,9 +64,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   startSession: async (courseId, topicId, chapterId) => {
     const { data } = await api.post<{ id: string }>('/api/sessions', { courseId, topicId, chapterId });
-    const sessionId = data.id;
-    await get().loadSession(sessionId);
-    return sessionId;
+    return data.id;
   },
 
   loadSession: async (sessionId) => {
