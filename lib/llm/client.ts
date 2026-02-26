@@ -1,25 +1,16 @@
-import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 import { generateText, streamText } from 'ai'
 import type { ModelMessage } from '@ai-sdk/provider-utils'
-import { env } from '@/lib/config/env'
-
-const bedrock = createAmazonBedrock({
-  region: env.aws.region,
-  accessKeyId: env.aws.accessKeyId,
-  secretAccessKey: env.aws.secretAccessKey,
-})
-
-const MODEL = env.aws.bedrockModel
+import { resolveModel, type ModelId } from '@/lib/llm/registry'
 
 // Re-export as the name the rest of the codebase uses
 export type { ModelMessage as ChatCompletionMessageParam }
 
 export async function chatCompletion(
   messages: ModelMessage[],
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; modelId?: ModelId }
 ): Promise<string> {
   const { text } = await generateText({
-    model: bedrock(MODEL),
+    model: resolveModel(options?.modelId),
     messages,
     temperature: options?.temperature ?? 0.7,
     maxOutputTokens: options?.maxTokens ?? 2048,
@@ -29,10 +20,10 @@ export async function chatCompletion(
 
 export async function* chatCompletionStream(
   messages: ModelMessage[],
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; modelId?: ModelId }
 ): AsyncGenerator<string> {
   const { textStream } = streamText({
-    model: bedrock(MODEL),
+    model: resolveModel(options?.modelId),
     messages,
     temperature: options?.temperature ?? 0.7,
     maxOutputTokens: options?.maxTokens ?? 2048,

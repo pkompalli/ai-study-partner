@@ -305,8 +305,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (!session) return null;
     try {
       const { data } = await api.post<{ card: Flashcard }>(
-        `/api/sessions/${session.id}/save-card`,
-        { question, answer, explanation },
+        `/api/sessions/${session.id}/messages`,
+        { type: 'save-card', question, answer, explanation },
       );
       const card = data.card;
       // Append to deck immediately; deduplicate by id
@@ -326,10 +326,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const session = get().activeSession;
     if (!session) return;
     try {
-      const { data } = await api.patch<{
+      const { data } = await api.post<{
         cardId: string; intervalDays: number; easeFactor: number;
         timesSeen: number; timesCorrect: number; nextReviewAt: string;
-      }>(`/api/sessions/${session.id}/card-review`, { cardId, correct });
+      }>(`/api/sessions/${session.id}/messages`, { type: 'review-card', cardId, correct });
 
       // Patch the card in-place so the deck re-sorts without a full reload
       set(state => {

@@ -1,5 +1,11 @@
 import { createServiceClient } from '@/lib/supabase/server'
 
+function isMissingTableError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false
+  if (error.code === 'PGRST205' || error.code === '42P01') return true
+  return (error.message ?? '').includes("Could not find the table")
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TopicCard {
@@ -310,7 +316,7 @@ export async function getCachedSummary(
     .eq('depth', depth)
     .single()
   if (error) {
-    if (error.code === 'PGRST116') return null
+    if (error.code === 'PGRST116' || isMissingTableError(error)) return null
     throw error
   }
   if (!data) return null
@@ -393,7 +399,7 @@ export async function getCachedChapterSummary(
     .eq('depth', depth)
     .single()
   if (error) {
-    if (error.code === 'PGRST116') return null
+    if (error.code === 'PGRST116' || isMissingTableError(error)) return null
     throw error
   }
   if (!data) return null
@@ -457,7 +463,7 @@ export async function saveChapterSummaryCache(
       },
       { onConflict: 'chapter_id,user_id,depth' },
     )
-  if (error) throw error
+  if (error && !isMissingTableError(error)) throw error
 }
 
 // ─── Chapter progress ─────────────────────────────────────────────────────────
@@ -489,5 +495,5 @@ export async function upsertChapterProgress(
       { user_id: userId, chapter_id: chapterId, topic_id: topicId, course_id: courseId, status, last_studied: new Date().toISOString() },
       { onConflict: 'user_id,chapter_id' },
     )
-  if (error) throw error
+  if (error && !isMissingTableError(error)) throw error
 }

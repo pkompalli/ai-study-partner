@@ -322,6 +322,7 @@ export async function generateExamQuestions(params: {
     // as context, preventing the LLM from repeating the same "most obvious" example.
     const batchResults: GeneratedQuestion[] = [];
     const seenTexts: string[] = [];
+    let firstError: unknown = null;
 
     for (let qi = 0; qi < batchCount; qi++) {
       const section = sections[qi % sections.length];
@@ -354,8 +355,16 @@ export async function generateExamQuestions(params: {
           seenTexts.push(result.question_text.replace(/\s+/g, ' ').slice(0, 120));
         }
       } catch (err) {
+        if (!firstError) firstError = err;
         console.warn(`[examQ batch] question ${qi + 1} failed:`, err);
       }
+    }
+
+    if (batchResults.length === 0 && firstError) {
+      if (firstError instanceof Error) {
+        throw new Error(`Question generation failed: ${firstError.message}`);
+      }
+      throw new Error('Question generation failed');
     }
 
     console.log(`[examQ] generated ${batchResults.length}/${batchCount} questions (sequential batch)`);

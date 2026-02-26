@@ -2,6 +2,23 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+  const isStaticAsset =
+    pathname.startsWith('/_next') ||
+    pathname === '/favicon.ico' ||
+    /\.(?:css|gif|ico|jpg|jpeg|js|map|png|svg|webp|woff2?)$/i.test(pathname)
+  const isPublicRoute =
+    pathname === '/' ||
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/signup') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/api')
+
+  // Skip auth/session work for public, auth, API, and static routes.
+  if (isStaticAsset || isPublicRoute) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -24,15 +41,7 @@ export async function middleware(request: NextRequest) {
   // IMPORTANT: do not remove — refreshes the session
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Redirect unauthenticated users away from protected routes
-  const isProtected = !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/signup') &&
-    !request.nextUrl.pathname.startsWith('/auth') &&
-    request.nextUrl.pathname !== '/' &&
-    !request.nextUrl.pathname.startsWith('/api') &&
-    !request.nextUrl.pathname.startsWith('/_next')
-
-  if (isProtected && !user) {
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
@@ -42,5 +51,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)'],
 }

@@ -26,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [setSidebarOpen]);
 
   return (
-    <div className="min-h-screen bg-white flex">
+    <div className="h-screen bg-white flex overflow-hidden">
       {/* Sidebar overlay for mobile */}
       {isSidebarOpen && (
         <div
@@ -37,9 +37,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <TopBar />
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0 min-h-0">
           {children}
         </main>
         <BottomNav />

@@ -1,17 +1,15 @@
 'use client'
-import React, { memo, useMemo } from 'react'
-import ReactMarkdown from 'react-markdown'
-import type { Components } from 'react-markdown'
-import remarkMath from 'remark-math'
-import remarkGfm from 'remark-gfm'
-import rehypeKatex from 'rehype-katex'
+import { useMemo } from 'react'
+import { Streamdown } from 'streamdown'
+import { math } from '@streamdown/math'
+import type { Components } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { InlineMermaid } from '@/components/session/InlineMermaid'
 import { InlineQuiz } from '@/components/session/InlineQuiz'
 import { InlineFlashcards } from '@/components/session/InlineFlashcards'
 
 /**
- * Normalise LaTeX delimiters so remark-math can process everything.
+ * Normalise LaTeX delimiters so @streamdown/math can process everything.
  * Kept in sync with RichMessageContent.tsx — both must preprocess identically.
  */
 function preprocessLatex(content: string): string {
@@ -31,7 +29,7 @@ function preprocessLatex(content: string): string {
     (m) => { saved.push(m); return `\x02${saved.length - 1}\x03` },
   )
 
-  s = s.replace(/\\ce\{([^}]*)\}/g, match => `$${match}$`)
+  s = s.replace(/\\ce\{([^}]*)}/g, match => `$${match}$`)
 
   s = s.replace(
     /\\begin\{([^}]+)\}([\s\S]*?)\\end\{\1\}/g,
@@ -40,6 +38,9 @@ function preprocessLatex(content: string): string {
 
   return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i])
 }
+
+// Stable reference — math plugin is a singleton
+const PLUGINS = { math }
 
 function makeComponents(invert?: boolean): Components {
   return {
@@ -89,85 +90,6 @@ function makeComponents(invert?: boolean): Components {
   }
 }
 
-/**
- * Split markdown into paragraph-level blocks.
- *
- * Blocks are separated by one or more blank lines. Code fences (```) and
- * math display blocks ($$) are treated as atomic units so we never cut
- * inside them — a mid-fence split would produce broken markdown.
- */
-function splitIntoBlocks(content: string): string[] {
-  const lines = content.split('\n')
-  const blocks: string[] = []
-  let current: string[] = []
-  let inFence = false
-  let inMathBlock = false
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    // Toggle fenced code block
-    if (trimmed.startsWith('```')) {
-      inFence = !inFence
-      current.push(line)
-      continue
-    }
-
-    // Toggle display math block
-    if (trimmed === '$$') {
-      inMathBlock = !inMathBlock
-      current.push(line)
-      continue
-    }
-
-    // Inside a protected region — accumulate without splitting
-    if (inFence || inMathBlock) {
-      current.push(line)
-      continue
-    }
-
-    // Blank line outside a protected region — flush block
-    if (trimmed === '') {
-      if (current.length > 0) {
-        blocks.push(current.join('\n'))
-        current = []
-      }
-    } else {
-      current.push(line)
-    }
-  }
-
-  // Flush any trailing content
-  if (current.length > 0) {
-    blocks.push(current.join('\n'))
-  }
-
-  return blocks.length > 0 ? blocks : ['']
-}
-
-interface BlockProps {
-  content: string
-  invert?: boolean
-}
-
-/**
- * A single memoized block — only re-renders when its `content` string changes.
- * Because all completed blocks have a stable key in StreamingMarkdown, React
- * never re-renders them even when the parent receives new props.
- */
-const MarkdownBlock = memo(function MarkdownBlock({ content, invert }: BlockProps) {
-  const components = useMemo(() => makeComponents(invert), [invert])
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkMath, remarkGfm]}
-      rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
-      components={components}
-    >
-      {preprocessLatex(content)}
-    </ReactMarkdown>
-  )
-})
-
 interface Props {
   content: string
   isStreaming?: boolean
@@ -178,34 +100,23 @@ interface Props {
 /**
  * StreamingMarkdown — flicker-free markdown renderer for SSE streams.
  *
- * Strategy:
- *   - Split content into paragraph-level blocks (blank-line boundaries,
- *     respecting code fences and math blocks).
- *   - All blocks except the LAST one are rendered with a stable numeric key
- *     so React never unmounts/remounts them between re-renders.
- *   - The last block gets a `streaming-<i>` key during streaming so it
- *     re-renders as new characters arrive, but becomes stable once streaming
- *     ends and is committed as a regular block.
- *   - A blinking cursor is appended only while isStreaming is true.
- *
- * The result: only the actively-growing last block re-renders on every chunk;
- * all previous blocks are memoized and stay untouched.
+ * Uses streamdown's native streaming mode which handles incomplete markdown
+ * syntax (unclosed bold, partial code fences) without the block-memoization
+ * workaround. The `caret` prop shows a blinking cursor while streaming.
  */
 export function StreamingMarkdown({ content, isStreaming, invert, className }: Props) {
-  const blocks = useMemo(() => splitIntoBlocks(content), [content])
+  const components = useMemo(() => makeComponents(invert), [invert])
 
   return (
     <div className={cn('prose prose-sm max-w-none', invert && 'prose-invert', className)}>
-      {blocks.map((block, i) => {
-        const isLastBlock = i === blocks.length - 1
-        // Stable key for completed blocks prevents React from touching them.
-        // Unstable key for the last block while streaming forces it to update.
-        const key = isStreaming && isLastBlock ? `streaming-${i}` : i
-        return <MarkdownBlock key={key} content={block} invert={invert} />
-      })}
-      {isStreaming && (
-        <span className="inline-block w-1.5 h-4 bg-current animate-pulse ml-0.5 align-middle" />
-      )}
+      <Streamdown
+        mode={isStreaming ? 'streaming' : 'static'}
+        caret={isStreaming ? 'block' : undefined}
+        plugins={PLUGINS}
+        components={components}
+      >
+        {preprocessLatex(content)}
+      </Streamdown>
     </div>
   )
 }

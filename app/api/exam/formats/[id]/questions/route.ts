@@ -9,12 +9,14 @@ import {
 import { getCourseContext, getCourseWithTree } from '@/lib/db/courses'
 import { generateExamQuestions } from '@/lib/llm/examQuestionGenerator'
 import { randomUUID } from 'crypto'
+import { apiErrorResponse, getRequestId, logApiError } from '@/lib/server/apiError'
 // GET /api/exam/formats/[id]/questions — list questions for a format
 // Optional query param: sectionId
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(req)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -29,8 +31,9 @@ export async function GET(
     const questions = await getExamQuestions(id, sectionId)
     return NextResponse.json(questions)
   } catch (err: unknown) {
+    logApiError({ route: 'exam/formats/[id]/questions.GET', requestId, req, err })
     const message = err instanceof Error ? err.message : 'Internal error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiErrorResponse(message, 500, requestId)
   }
 }
 
@@ -41,6 +44,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(req)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -119,7 +123,7 @@ export async function POST(
       const topicNameMap = Object.fromEntries(topics.map((t) => [t.id, t.name]))
       const questionsWithIds = generated.map((q) => ({ ...q, _id: randomUUID() }))
 
-      await saveExamQuestions(id, format.course_id, questionsWithIds.map((q) => ({
+      await saveExamQuestions(id, user.id, format.course_id, questionsWithIds.map((q) => ({
         ...q,
         id: q._id,
         topic_id: resolveTopicId(q.topic_id),
@@ -165,20 +169,40 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to generate any questions' }, { status: 500 })
     }
 
-    await saveExamQuestions(id, format.course_id, generated)
+    await saveExamQuestions(id, user.id, format.course_id, generated)
     const questions = await getExamQuestions(id)
     return NextResponse.json({ count: questions.length, questions })
   } catch (err: unknown) {
+    logApiError({ route: 'exam/formats/[id]/questions.POST', requestId, req, err })
     const message = err instanceof Error ? err.message : 'Internal error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const lower = message.toLowerCase()
+    const providerAuthError =
+      lower.includes('security token') ||
+      lower.includes('unrecognizedclientexception') ||
+      lower.includes('access key') ||
+      lower.includes('credentials') ||
+      lower.includes('invalid api key') ||
+      lower.includes('unauthorized') ||
+      lower.includes('subscription key')
+
+    if (providerAuthError) {
+      return apiErrorResponse(
+        'Question generation provider authentication failed. Check LLM credentials in .env.local (Azure/OpenAI/Google/AWS).',
+        502,
+        requestId,
+      )
+    }
+
+    return apiErrorResponse(message, 500, requestId)
   }
 }
 
 // DELETE /api/exam/formats/[id]/questions — clear all questions for a format
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(req)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -191,7 +215,8 @@ export async function DELETE(
     await deleteExamQuestions(id)
     return new NextResponse(null, { status: 204 })
   } catch (err: unknown) {
+    logApiError({ route: 'exam/formats/[id]/questions.DELETE', requestId, req, err })
     const message = err instanceof Error ? err.message : 'Internal error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiErrorResponse(message, 500, requestId)
   }
 }

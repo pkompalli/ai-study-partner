@@ -45,8 +45,8 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'fixed top-0 left-0 h-full w-64 bg-primary-950 border-r border-primary-800/50 z-40 flex flex-col transition-transform duration-200',
-        'md:translate-x-0 md:static md:flex',
+        'fixed top-0 left-0 h-screen w-64 bg-primary-950 border-r border-primary-800/50 z-40 flex flex-col transition-transform duration-200',
+        'md:translate-x-0 md:static md:flex md:h-full',
         isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
       )}
     >

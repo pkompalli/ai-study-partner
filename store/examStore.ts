@@ -5,6 +5,9 @@ import type {
   ExamFormat, ExamSection, ExamQuestion, ExamAttempt, LocalAnswerState, TopicReadiness, MarkCriterion,
 } from '@/types';
 
+const EXAM_CACHE_SCHEMA_VERSION = 2;
+const EXAM_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
 export interface PaperPreview {
   name: string;
   total_marks?: number;
@@ -428,7 +431,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
       // Scoped to chapter when set, otherwise topic.
       const { examDifficulty, requestedCount } = get();
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
-        `/api/exam/formats/${formatId}/questions/batch`,
+        `/api/exam/formats/${formatId}/questions`,
         { count: requestedCount, difficulty: examDifficulty, topicId, chapterId },
       );
       const questions = data.questions ?? [];
@@ -456,7 +459,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     set({ sessionBatchGenerating: true });
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
-        `/api/exam/formats/${formatId}/questions/batch`,
+        `/api/exam/formats/${formatId}/questions`,
         { count: requestedCount, difficulty: examDifficulty, topicId, chapterId },
       );
       const newQs = data.questions ?? [];
@@ -486,7 +489,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     });
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
-        `/api/exam/formats/${formatId}/questions/batch`,
+        `/api/exam/formats/${formatId}/questions`,
         { count: requestedCount, difficulty: clamped, topicId, chapterId },
       );
       const newQs = data.questions ?? [];
@@ -557,7 +560,24 @@ export const useExamStore = create<ExamState>((set, get) => ({
           sessionMarkingId: null,
         }));
       }
-    } catch {
+    } catch (err: unknown) {
+      const axiosResp = (err as { response?: { status?: number; data?: { error?: string } } })?.response;
+      const questionMissing = axiosResp?.status === 404 && axiosResp?.data?.error === 'Question not found';
+      if (questionMissing) {
+        set({
+          sessionMarkingId: null,
+          sessionBankAll: [],
+          sessionBatch: [],
+          sessionBankOffset: 0,
+          sessionAnswers: {},
+          sessionHints: {},
+          sessionFullAnswers: {},
+          sessionHintLoading: null,
+          sessionFullAnswerLoading: null,
+          sessionBatchError: 'Your saved practice set is stale and no longer exists on the server. Click "Generate Questions" to load a fresh set.',
+        });
+        return;
+      }
       set({ sessionMarkingId: null });
     }
   },
@@ -579,7 +599,22 @@ export const useExamStore = create<ExamState>((set, get) => ({
         },
         sessionHintLoading: null,
       }));
-    } catch {
+    } catch (err: unknown) {
+      const axiosResp = (err as { response?: { status?: number; data?: { error?: string } } })?.response;
+      const questionMissing = axiosResp?.status === 404 && axiosResp?.data?.error === 'Question not found';
+      if (questionMissing) {
+        set({
+          sessionHintLoading: null,
+          sessionBankAll: [],
+          sessionBatch: [],
+          sessionBankOffset: 0,
+          sessionAnswers: {},
+          sessionHints: {},
+          sessionFullAnswers: {},
+          sessionBatchError: 'Your saved practice set is stale and no longer exists on the server. Click "Generate Questions" to load a fresh set.',
+        });
+        return;
+      }
       set({ sessionHintLoading: null });
     }
   },
@@ -602,7 +637,22 @@ export const useExamStore = create<ExamState>((set, get) => ({
         sessionFullAnswers: { ...state.sessionFullAnswers, [questionId]: data.answer },
         sessionFullAnswerLoading: null,
       }));
-    } catch {
+    } catch (err: unknown) {
+      const axiosResp = (err as { response?: { status?: number; data?: { error?: string } } })?.response;
+      const questionMissing = axiosResp?.status === 404 && axiosResp?.data?.error === 'Question not found';
+      if (questionMissing) {
+        set({
+          sessionFullAnswerLoading: null,
+          sessionBankAll: [],
+          sessionBatch: [],
+          sessionBankOffset: 0,
+          sessionAnswers: {},
+          sessionHints: {},
+          sessionFullAnswers: {},
+          sessionBatchError: 'Your saved practice set is stale and no longer exists on the server. Click "Generate Questions" to load a fresh set.',
+        });
+        return;
+      }
       set({ sessionFullAnswerLoading: null });
     }
   },
@@ -613,10 +663,22 @@ export const useExamStore = create<ExamState>((set, get) => ({
 
   persistExamState: (sessionId) => {
     const { sessionBatch, sessionBankAll, sessionBankOffset, sessionAnswers, sessionHints, sessionFullAnswers, examDifficulty, requestedCount } = get();
+    const payload = {
+      schemaVersion: EXAM_CACHE_SCHEMA_VERSION,
+      persistedAt: Date.now(),
+      sessionBatch,
+      sessionBankAll,
+      sessionBankOffset,
+      sessionAnswers,
+      sessionHints,
+      sessionFullAnswers,
+      examDifficulty,
+      requestedCount,
+    };
     try {
       localStorage.setItem(
         'exam_practice_' + sessionId,
-        JSON.stringify({ sessionBatch, sessionBankAll, sessionBankOffset, sessionAnswers, sessionHints, sessionFullAnswers, examDifficulty, requestedCount }),
+        JSON.stringify(payload),
       );
     } catch {
       // localStorage may be unavailable (private mode / quota exceeded)
@@ -624,7 +686,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
       try {
         localStorage.setItem(
           'exam_practice_' + sessionId,
-          JSON.stringify({ sessionBatch, sessionBankAll, sessionBankOffset, sessionAnswers, sessionHints, sessionFullAnswers: {}, examDifficulty, requestedCount }),
+          JSON.stringify({ ...payload, sessionFullAnswers: {} }),
         );
       } catch { /* give up */ }
     }
@@ -632,16 +694,46 @@ export const useExamStore = create<ExamState>((set, get) => ({
 
   restoreExamState: (sessionId) => {
     try {
-      const raw = localStorage.getItem('exam_practice_' + sessionId);
+      const storageKey = 'exam_practice_' + sessionId;
+      const raw = localStorage.getItem(storageKey);
       if (!raw) return false;
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as {
+        schemaVersion?: number;
+        persistedAt?: number;
+        sessionBatch?: unknown[];
+        sessionBankAll?: unknown[];
+        sessionBankOffset?: number;
+        sessionAnswers?: Record<string, unknown>;
+        sessionHints?: Record<string, unknown>;
+        sessionFullAnswers?: Record<string, string>;
+        examDifficulty?: number;
+        requestedCount?: number;
+      };
+
+      const isLegacyPayload = parsed.schemaVersion !== EXAM_CACHE_SCHEMA_VERSION || typeof parsed.persistedAt !== 'number';
+      const isExpired = typeof parsed.persistedAt === 'number' && (Date.now() - parsed.persistedAt > EXAM_CACHE_TTL_MS);
+      if (isLegacyPayload || isExpired) {
+        localStorage.removeItem(storageKey);
+        return false;
+      }
+
       if (!Array.isArray(parsed.sessionBatch) || parsed.sessionBatch.length === 0) return false;
+      const hasInvalidQuestionShape = parsed.sessionBatch.some((q) => {
+        if (!q || typeof q !== 'object') return true;
+        const obj = q as { id?: unknown; exam_format_id?: unknown };
+        return typeof obj.id !== 'string' || typeof obj.exam_format_id !== 'string';
+      });
+      if (hasInvalidQuestionShape) {
+        localStorage.removeItem(storageKey);
+        return false;
+      }
+
       set({
-        sessionBatch: parsed.sessionBatch,
-        sessionBankAll: parsed.sessionBankAll ?? parsed.sessionBatch,
+        sessionBatch: parsed.sessionBatch as ExamQuestion[],
+        sessionBankAll: (parsed.sessionBankAll as ExamQuestion[] | undefined) ?? (parsed.sessionBatch as ExamQuestion[]),
         sessionBankOffset: parsed.sessionBankOffset ?? parsed.sessionBatch.length,
-        sessionAnswers: parsed.sessionAnswers ?? {},
-        sessionHints: parsed.sessionHints ?? {},
+        sessionAnswers: parsed.sessionAnswers as Record<string, { answerText: string; selectedOptionIndex?: number; score?: number; feedback?: string; marked: boolean }> ?? {},
+        sessionHints: parsed.sessionHints as Record<string, { text: string; count: number }> ?? {},
         sessionFullAnswers: parsed.sessionFullAnswers ?? {},
         examDifficulty: parsed.examDifficulty ?? 3,
         requestedCount: parsed.requestedCount ?? 5,

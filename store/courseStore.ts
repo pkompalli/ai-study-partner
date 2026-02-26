@@ -7,9 +7,10 @@ interface CourseState {
   courses: Course[];
   activeCourse: Course | null;
   loading: boolean;
+  coursesLoadedAt: number | null;
   topicProgress: Record<string, { status: string; last_studied: string }>;
   chapterProgress: Record<string, { status: string; last_studied: string }>;
-  fetchCourses: () => Promise<void>;
+  fetchCourses: (opts?: { force?: boolean }) => Promise<void>;
   fetchCourse: (id: string) => Promise<Course>;
   createCourse: (payload: unknown) => Promise<string>;
   updateCourse: (id: string, payload: Partial<Pick<Course, 'name' | 'description' | 'exam_name' | 'year_of_study'>>) => Promise<void>;
@@ -23,14 +24,19 @@ export const useCourseStore = create<CourseState>((set, get) => ({
   courses: [],
   activeCourse: null,
   loading: false,
+  coursesLoadedAt: null,
   topicProgress: {},
   chapterProgress: {},
 
-  fetchCourses: async () => {
+  fetchCourses: async (opts) => {
+    const { loading, courses, coursesLoadedAt } = get();
+    const isFresh = coursesLoadedAt !== null && (Date.now() - coursesLoadedAt) < 60_000;
+    if (!opts?.force && (loading || (courses.length > 0 && isFresh))) return;
+
     set({ loading: true });
     try {
       const { data } = await api.get<Course[]>('/api/courses');
-      set({ courses: data });
+      set({ courses: data, coursesLoadedAt: Date.now() });
     } finally {
       set({ loading: false });
     }
@@ -44,7 +50,7 @@ export const useCourseStore = create<CourseState>((set, get) => ({
 
   createCourse: async (payload) => {
     const { data } = await api.post<{ id: string }>('/api/courses', payload);
-    await get().fetchCourses();
+    await get().fetchCourses({ force: true });
     return data.id;
   },
 

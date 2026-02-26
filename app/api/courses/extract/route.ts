@@ -7,6 +7,8 @@ import {
   extractCourseFromJSON,
 } from '@/lib/llm/courseExtractor'
 import { uploadFile } from '@/lib/storage'
+import { checkRateLimit } from '@/lib/server/rateLimit'
+import { validateUploadedFiles } from '@/lib/server/uploadValidation'
 
 // POST /api/courses/extract — extract course structure from uploaded content
 export async function POST(req: NextRequest) {
@@ -15,6 +17,14 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const limit = checkRateLimit(`course-extract:${user.id}`, { limit: 10, windowMs: 60_000 })
+    if (limit.limited) {
+      return NextResponse.json(
+        { error: 'Too many extraction requests. Please wait a moment.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      )
+    }
+
     const formData = await req.formData()
     const sourceType = formData.get('sourceType') as string | null
     const rawInput = formData.get('rawInput') as string | undefined ?? undefined
@@ -22,6 +32,12 @@ export async function POST(req: NextRequest) {
     const singleFile = formData.get('file') as File | null
     const multiFilesRaw = formData.getAll('files') as File[]
     const multiFiles = multiFilesRaw.length > 0 ? multiFilesRaw : (singleFile ? [singleFile] : [])
+    const uploadError = validateUploadedFiles(multiFiles, {
+      maxFiles: 30,
+      maxFileSizeBytes: 20 * 1024 * 1024,
+      allowedTypes: ['application/pdf', 'image/*', 'application/json', 'text/plain'],
+    })
+    if (uploadError) return NextResponse.json({ error: uploadError }, { status: 400 })
 
     let structure
     if (sourceType === 'text' && rawInput) {

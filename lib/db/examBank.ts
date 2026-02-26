@@ -296,6 +296,7 @@ export async function getExamQuestionById(questionId: string) {
 
 export async function saveExamQuestions(
   formatId: string,
+  userId: string,
   courseId: string,
   questions: Array<{
     id?: string
@@ -314,6 +315,7 @@ export async function saveExamQuestions(
   const rows = questions.map((q) => ({
     ...(q.id ? { id: q.id } : {}),
     exam_format_id: formatId,
+    user_id: userId,
     section_id: q.section_id,
     topic_id: q.topic_id ?? null,
     course_id: courseId,

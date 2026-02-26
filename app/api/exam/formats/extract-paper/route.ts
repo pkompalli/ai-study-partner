@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { extractExamFromPaper } from '@/lib/llm/examQuestionGenerator'
+import { checkRateLimit } from '@/lib/server/rateLimit'
+import { validateUploadedFiles } from '@/lib/server/uploadValidation'
 
 // POST /api/exam/formats/extract-paper — extract exam format + questions from uploaded paper
 export async function POST(req: NextRequest) {
@@ -9,9 +11,24 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const limit = checkRateLimit(`exam-paper-extract:${user.id}`, { limit: 10, windowMs: 60_000 })
+    if (limit.limited) {
+      return NextResponse.json(
+        { error: 'Too many extraction requests. Please wait a moment.' },
+        { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+      )
+    }
+
     const formData = await req.formData()
     const files = formData.getAll('files') as File[]
     const singleFile = formData.get('file') as File | null
+    const uploadFiles = singleFile ? [singleFile] : files
+    const uploadError = validateUploadedFiles(uploadFiles, {
+      maxFiles: 30,
+      maxFileSizeBytes: 20 * 1024 * 1024,
+      allowedTypes: ['application/pdf', 'image/*'],
+    })
+    if (uploadError) return NextResponse.json({ error: uploadError }, { status: 400 })
 
     let source: Parameters<typeof extractExamFromPaper>[0]
 

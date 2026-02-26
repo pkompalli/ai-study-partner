@@ -1,5 +1,6 @@
 import { chatCompletion } from '@/lib/llm/client';
 import { buildPillsPrompt } from '@/lib/llm/prompts';
+import { MODEL_IDS } from '@/lib/llm/registry';
 
 export async function generateResponsePills(
   aiResponse: string,
@@ -11,7 +12,7 @@ export async function generateResponsePills(
   const raw = await chatCompletion([
     { role: 'system', content: prompt },
     { role: 'user', content: 'Generate the question, answer pills, and followup pills.' },
-  ], { temperature: 0.4, maxTokens: 500 });
+  ], { temperature: 0.4, maxTokens: 500, modelId: MODEL_IDS.GOOGLE_GEMINI_3_FLASH });
 
   try {
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();

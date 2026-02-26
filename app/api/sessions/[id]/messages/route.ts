@@ -29,6 +29,8 @@ import { streamTopicSummaryGenerator } from '@/lib/llm/summaryGenerator'
 import { generateResponsePills } from '@/lib/llm/pillsGenerator'
 import { fetchVideoLinks } from '@/lib/youtube'
 import { inferAcademicLevel } from '@/lib/llm/prompts'
+import { checkRateLimit } from '@/lib/server/rateLimit'
+import { apiErrorResponse, getRequestId, logApiError } from '@/lib/server/apiError'
 
 // Helper to get topic and chapter names from IDs
 async function resolveNames(topicId?: string | null, chapterId?: string | null) {
@@ -54,6 +56,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(req)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -100,6 +103,14 @@ export async function GET(
     }
 
     if (type === 'summary') {
+      const limit = checkRateLimit(`summary:${user.id}:${id}`, { limit: 20, windowMs: 60_000 })
+      if (limit.limited) {
+        return NextResponse.json(
+          { error: 'Too many summary requests. Please wait a moment.' },
+          { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+        )
+      }
+
       const rawDepth = parseInt(req.nextUrl.searchParams.get('depth') ?? '0', 10) || 0
       const force = req.nextUrl.searchParams.get('force') === 'true'
 
@@ -212,8 +223,9 @@ export async function GET(
     const messages = await getSessionMessages(id)
     return NextResponse.json(messages)
   } catch (err: unknown) {
+    logApiError({ route: 'sessions/[id]/messages.GET', requestId, req, err })
     const message = err instanceof Error ? err.message : 'Internal error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiErrorResponse(message, 500, requestId)
   }
 }
 
@@ -230,6 +242,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const requestId = getRequestId(req)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -246,6 +259,17 @@ export async function POST(
       explanation?: string
       cardId?: string
       correct?: boolean
+    }
+
+    const llmHeavyTypes = new Set(['message', 'quiz', 'flashcards', 'videos', 'regenerate'])
+    if (llmHeavyTypes.has(body.type)) {
+      const limit = checkRateLimit(`session-llm:${user.id}:${id}`, { limit: 30, windowMs: 60_000 })
+      if (limit.limited) {
+        return NextResponse.json(
+          { error: 'Too many AI requests. Please wait a moment.' },
+          { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } },
+        )
+      }
     }
 
     const session = await getSessionById(id, user.id)
@@ -413,7 +437,8 @@ export async function POST(
       headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
     })
   } catch (err: unknown) {
+    logApiError({ route: 'sessions/[id]/messages.POST', requestId, req, err })
     const message = err instanceof Error ? err.message : 'Internal error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiErrorResponse(message, 500, requestId)
   }
 }
