@@ -85,7 +85,7 @@ export function FlashcardDeck({ cards, onReview }: FlashcardDeckProps) {
       </div>
 
       {/* Scrollable card area */}
-      <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
+      <div className="flex-1 overflow-y-auto px-3 py-3 pb-4 flex flex-col gap-3">
 
         {/* Due indicator on card */}
         {isDue(card) && !card.last_reviewed_at && (
@@ -102,12 +102,12 @@ export function FlashcardDeck({ cards, onReview }: FlashcardDeckProps) {
 
         {/* Flip card */}
         <div
-          className="relative cursor-pointer flex-shrink-0"
-          style={{ height: '160px', perspective: '1000px' }}
+          className="relative cursor-pointer flex-shrink-0 overflow-hidden"
+          style={{ height: 'clamp(160px, 32vh, 240px)', perspective: '1000px' }}
           onClick={() => !cardReviewed && setFlipped(f => !f)}
         >
           <div
-            className={cn('absolute inset-0 transition-transform duration-500')}
+            className={cn('absolute inset-0 h-full transition-transform duration-500')}
             style={{
               transformStyle: 'preserve-3d',
               transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
@@ -115,7 +115,7 @@ export function FlashcardDeck({ cards, onReview }: FlashcardDeckProps) {
           >
             {/* Front */}
             <div className={cn(
-              'absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-8 text-center min-h-[200px]',
+              'absolute inset-0 h-full rounded-2xl flex flex-col items-center justify-center p-6 text-center overflow-y-auto',
               'bg-white border border-gray-200 shadow-md',
               '[backface-visibility:hidden]'
             )}>
@@ -127,7 +127,7 @@ export function FlashcardDeck({ cards, onReview }: FlashcardDeckProps) {
 
             {/* Back */}
             <div className={cn(
-              'absolute inset-0 rounded-2xl flex flex-col items-center justify-center p-8 text-center min-h-[200px]',
+              'absolute inset-0 h-full rounded-2xl flex flex-col items-center justify-center p-6 text-center overflow-y-auto',
               'bg-primary-50 border border-gray-200 shadow-md',
               '[backface-visibility:hidden] [transform:rotateY(180deg)]'
             )}>
