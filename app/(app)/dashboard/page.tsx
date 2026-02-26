@@ -6,13 +6,13 @@ import { Plus, BookOpen, GraduationCap, Trash2, BarChart2, Play, ChevronDown, Ch
 import { useCourseStore } from '@/store/courseStore';
 import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
-import { useSessionStore } from '@/store/sessionStore';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { formatDate } from '@/lib/utils';
 import api from '@/lib/api';
 import type { Course, TopicReadiness } from '@/types';
+import { buildSessionStartRoute } from '@/lib/sessionStartRoute';
 
 // ─── Readiness section (lazy-loaded per course) ───────────────────────────────
 
@@ -64,28 +64,19 @@ function CourseCard({
   onDelete?: (id: string) => void;
 }) {
   const router = useRouter();
-  const { startSession } = useSessionStore();
-  const addToast = useUIStore(s => s.addToast);
   const [scoresOpen, setScoresOpen] = useState(false);
   const [starting, setStarting] = useState(false);
 
   const isExamPrep = course.goal === 'exam_prep';
   const firstTopic = course.subjects?.[0]?.topics?.[0];
 
-  const handleStudy = async () => {
+  const handleStudy = () => {
     if (!firstTopic) {
       router.push(`/courses/${course.id}`);
       return;
     }
     setStarting(true);
-    try {
-      const sessionId = await startSession(course.id, firstTopic.id);
-      router.push(`/sessions/${sessionId}`);
-    } catch {
-      addToast('Failed to start session', 'error');
-    } finally {
-      setStarting(false);
-    }
+    router.push(buildSessionStartRoute({ courseId: course.id, topicId: firstTopic.id }));
   };
 
   return (
@@ -172,12 +163,16 @@ function CourseCard({
 // ─── Dashboard page ───────────────────────────────────────────────────────────
 
 export default function Page() {
+  const router = useRouter();
   const { courses, fetchCourses, deleteCourse, loading } = useCourseStore();
   const user = useAuthStore(s => s.user);
   const addToast = useUIStore(s => s.addToast);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  useEffect(() => { fetchCourses(); }, [fetchCourses]);
+  useEffect(() => {
+    fetchCourses();
+    router.prefetch('/sessions/new');
+  }, [fetchCourses, router]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this course and all its sessions?')) return;

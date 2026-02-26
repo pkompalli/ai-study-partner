@@ -9,9 +9,10 @@ interface CourseTreeProps {
   onStartSession: (topicId: string, chapterId?: string) => void;
   topicProgress?: Record<string, { status: string }>;
   chapterProgress?: Record<string, { status: string }>;
+  startingSessionKey?: string | null;
 }
 
-export function CourseTree({ subjects, onStartSession, topicProgress, chapterProgress }: CourseTreeProps) {
+export function CourseTree({ subjects, onStartSession, topicProgress, chapterProgress, startingSessionKey }: CourseTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set([subjects[0]?.id]));
 
   const toggle = (id: string) => {
@@ -45,6 +46,7 @@ export function CourseTree({ subjects, onStartSession, topicProgress, chapterPro
                 const dot = topicStatus === 'completed' ? 'bg-green-500'
                   : topicStatus === 'in_progress' ? 'bg-amber-400'
                   : 'bg-gray-200';
+                const isTopicStarting = startingSessionKey === topic.id;
                 return (
                 <div key={topic.id} className="px-4 py-3 hover:bg-gray-50">
                   <div className="flex items-center justify-between gap-2 mb-2">
@@ -54,10 +56,11 @@ export function CourseTree({ subjects, onStartSession, topicProgress, chapterPro
                     </div>
                     <button
                       onClick={() => onStartSession(topic.id)}
+                      disabled={Boolean(startingSessionKey)}
                       className="flex items-center gap-1 px-3 py-1 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 transition-colors"
                     >
                       <Play className="h-3 w-3" />
-                      Study
+                      {isTopicStarting ? 'Opening…' : 'Study'}
                     </button>
                   </div>
                   <div className="space-y-1 pl-2">
@@ -66,6 +69,7 @@ export function CourseTree({ subjects, onStartSession, topicProgress, chapterPro
                       const chapterDot = chapterStatus === 'completed' ? 'bg-green-500'
                         : chapterStatus === 'in_progress' ? 'bg-amber-400'
                         : 'bg-red-400';
+                      const isChapterStarting = startingSessionKey === `${topic.id}:${chapter.id}`;
                       return (
                         <div key={chapter.id} className={cn('flex items-center justify-between gap-2 py-1 hover:bg-primary-50/50 rounded cursor-pointer')}>
                           <div className="flex items-center gap-1.5 min-w-0">
@@ -74,9 +78,10 @@ export function CourseTree({ subjects, onStartSession, topicProgress, chapterPro
                           </div>
                           <button
                             onClick={() => onStartSession(topic.id, chapter.id)}
-                            className="text-xs text-primary-500 hover:text-primary-700 flex-shrink-0"
+                            disabled={Boolean(startingSessionKey)}
+                            className="text-xs text-primary-500 hover:text-primary-700 disabled:opacity-50 flex-shrink-0"
                           >
-                            Start
+                            {isChapterStarting ? 'Opening…' : 'Start'}
                           </button>
                         </div>
                       );

@@ -468,10 +468,10 @@ export default function SessionPage() {
     activeFlashcards,
     topicSummary, summaryStreaming, summaryStreamingContent, summaryDepth,
     responsePills, pillsLoading,
-    loadSession, sendMessage, clearSession,
+    loadSession, sendMessage,
     fetchSummary, regenerateMessage, reviewCard, saveCardFromQuestion,
   } = useSessionStore();
-  const { fetchCourse, setActiveCourse } = useCourseStore();
+  const { fetchCourse } = useCourseStore();
   const { addToast } = useUIStore();
 
   const {
@@ -480,17 +480,15 @@ export default function SessionPage() {
     sessionAnswers, sessionMarkingId, examDifficulty,
     sessionHints, sessionHintLoading,
     sessionFullAnswers, sessionFullAnswerLoading, fetchSessionFullAnswer,
-    requestedCount, setRequestedCount, persistExamState, restoreExamState,
+    requestedCount, setRequestedCount,
     loadSessionBatch, loadMoreSessionBatch, refreshBatchAtDifficulty,
     setSessionAnswerText, setSessionSelectedOption, submitSessionAnswer,
     fetchSessionHint, clearSessionHint,
-    clearSessionExam,
   } = useExamStore();
 
   const [loading, setLoading] = useState(true);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [centerTab, setCenterTab] = useState<'study' | 'exam'>('study');
-  const [, setExamTabInitialized] = useState(false);
   // Panel toggle
   const [rightOpen, setRightOpen] = useState(true);
 
@@ -506,28 +504,10 @@ export default function SessionPage() {
   const [reviewMode, setReviewMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Stable key that survives across sessions for the same topic — format: "courseId_topicId_chapterId"
-  // A new session is created every time the user clicks a topic, so sessionId alone can't key exam data.
-  const topicExamKeyRef = useRef<string | null>(null);
-
-  /** Persist exam state under both the session ID and the topic-stable key (if available). */
-  const persistExamBothKeys = (sessionId: string) => {
-    const { sessionBatch } = useExamStore.getState();
-    if (!sessionBatch.length) return;
-    persistExamState(sessionId);
-    if (topicExamKeyRef.current) persistExamState(topicExamKeyRef.current);
-  };
 
   useEffect(() => {
     if (!id) return;
-    topicExamKeyRef.current = null; // reset for this session until loadSession reveals the topic
-
-    // Persist before the browser tab/window closes so we don't lose questions
-    // even when React's cleanup effect doesn't fire (e.g. hard navigation).
-    const handleBeforeUnload = () => {
-      persistExamBothKeys(id);
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    let cancelled = false;
 
     loadSession(id).then(async () => {
       const session = useSessionStore.getState().activeSession;
@@ -535,37 +515,17 @@ export default function SessionPage() {
         fetchCourse(session.course_id).catch(() => {});
         // Always fetch formats eagerly so the exam tab is ready immediately
         fetchFormats(session.course_id).catch(() => {});
+        router.prefetch(`/courses/${session.course_id}`);
       }
       fetchSummary(id, 0);
-
-      // Build the topic-stable key now that we know the session context
-      if (session?.course_id && session?.topic_id) {
-        topicExamKeyRef.current = `${session.course_id}_${session.topic_id}_${session.chapter_id ?? ''}`;
-      }
-
-      // Try topic key first (works even when this is a brand-new session for the same topic),
-      // fall back to session key for backward compatibility.
-      const topicKey = topicExamKeyRef.current;
-      const restored = (topicKey ? restoreExamState(topicKey) : false) || restoreExamState(id);
-      if (restored) setExamTabInitialized(true);
-    }).finally(() => setLoading(false));
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Read session info before clearSession() wipes it
-      const { activeSession: sess } = useSessionStore.getState();
-      if (sess?.course_id && sess?.topic_id) {
-        topicExamKeyRef.current = `${sess.course_id}_${sess.topic_id}_${sess.chapter_id ?? ''}`;
-      }
-      // Only persist when there are questions — guards against React StrictMode's
-      // double-mount firing the cleanup before loadSession resolves (which would
-      // overwrite good localStorage data with an empty store).
-      persistExamBothKeys(id);
-      clearSession();
-      setActiveCourse(null);
-      clearSessionExam();
+      cancelled = true;
     };
-  }, [id, loadSession, clearSession, fetchSummary, fetchCourse, setActiveCourse]);
+  }, [id, loadSession, fetchSummary, fetchCourse, fetchFormats, router]);
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
@@ -626,17 +586,14 @@ export default function SessionPage() {
 
   const handleLoadExamBatch = async (formatId: string) => {
     await loadSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
-    if (id) persistExamBothKeys(id);
   };
 
   const handleLoadMoreExamBatch = async (formatId: string) => {
     await loadMoreSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
-    if (id) persistExamBothKeys(id);
   };
 
   const handleRefreshBatch = async (formatId: string, difficulty: number) => {
     await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.topic_id, activeSession?.chapter_id);
-    if (id) persistExamBothKeys(id);
   };
 
   const handleSummaryDepthChange = (newDepth: number) => {
@@ -666,6 +623,19 @@ export default function SessionPage() {
     if (saved) setSavedMcqIndices(prev => new Set(prev).add(historyIndex));
   };
 
+  const handleBackToCourse = () => {
+    const courseId = activeSession?.course_id;
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    if (courseId) {
+      router.push(`/courses/${courseId}`);
+      return;
+    }
+    router.push('/dashboard');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -682,7 +652,7 @@ export default function SessionPage() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2 bg-white border-b border-gray-100 flex-shrink-0">
         <button
-          onClick={() => router.push(`/courses/${activeSession?.course_id}`)}
+          onClick={handleBackToCourse}
           className="p-1 rounded-lg hover:bg-gray-100"
           title="Back to course"
         >
@@ -804,7 +774,7 @@ export default function SessionPage() {
               onLoadMore={handleLoadMoreExamBatch}
               onSetAnswerText={setSessionAnswerText}
               onSetOption={setSessionSelectedOption}
-              onSubmit={async (qId, files) => { await submitSessionAnswer(qId, files); if (id) persistExamBothKeys(id); }}
+              onSubmit={async (qId, files) => { await submitSessionAnswer(qId, files); }}
               onRefreshBatch={handleRefreshBatch}
               onNavigateSettings={() => router.push(`/courses/${activeSession?.course_id}/settings`)}
               onFetchHint={(qId, answerText) => fetchSessionHint(qId, answerText)}

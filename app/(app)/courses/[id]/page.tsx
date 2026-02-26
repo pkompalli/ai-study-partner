@@ -1,39 +1,51 @@
 'use client'
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, GraduationCap, BookOpen, Settings } from 'lucide-react';
 import { useCourseStore } from '@/store/courseStore';
-import { useSessionStore } from '@/store/sessionStore';
-import { useUIStore } from '@/store/uiStore';
 import { CourseTree } from '@/components/course/CourseTree';
 import { Spinner } from '@/components/ui/Spinner';
+import { buildSessionStartRoute } from '@/lib/sessionStartRoute';
 
 export default function Page() {
   const params = useParams();
   const id = params?.id as string;
   const router = useRouter();
-  const { activeCourse, fetchCourse, loading, topicProgress, chapterProgress, fetchTopicProgress } = useCourseStore();
-  const { startSession } = useSessionStore();
-  const addToast = useUIStore(s => s.addToast);
+  const { activeCourse, fetchCourse, topicProgress, chapterProgress, fetchTopicProgress } = useCourseStore();
+  const [initializing, setInitializing] = useState(true);
+  const [startingSessionKey, setStartingSessionKey] = useState<string | null>(null);
+
+  const course = activeCourse?.id === id ? activeCourse : null;
 
   useEffect(() => {
-    if (id) {
-      fetchCourse(id);
-      fetchTopicProgress(id).catch(() => {});
-    }
-  }, [id, fetchCourse, fetchTopicProgress]);
-
-  const handleStartSession = async (topicId: string, chapterId?: string) => {
     if (!id) return;
-    try {
-      const sessionId = await startSession(id, topicId, chapterId);
-      router.push(`/sessions/${sessionId}`);
-    } catch {
-      addToast('Failed to start session', 'error');
+    let cancelled = false;
+    router.prefetch('/sessions/new');
+
+    if (!course) {
+      setInitializing(true);
+      fetchCourse(id).finally(() => {
+        if (!cancelled) setInitializing(false);
+      });
+    } else {
+      setInitializing(false);
     }
+
+    fetchTopicProgress(id).catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, course, fetchCourse, fetchTopicProgress, router]);
+
+  const handleStartSession = (topicId: string, chapterId?: string) => {
+    if (!id) return;
+    const key = chapterId ? `${topicId}:${chapterId}` : topicId;
+    setStartingSessionKey(key);
+    router.push(buildSessionStartRoute({ courseId: id, topicId, chapterId }));
   };
 
-  if (loading || !activeCourse) {
+  if (initializing && !course) {
     return (
       <div className="flex items-center justify-center py-16">
         <Spinner className="h-8 w-8" />
@@ -52,22 +64,22 @@ export default function Page() {
 
         <div className="flex items-start gap-3">
           <div className="h-10 w-10 rounded-xl bg-primary-100 flex items-center justify-center flex-shrink-0">
-            {activeCourse.goal === 'exam_prep'
+            {course?.goal === 'exam_prep'
               ? <GraduationCap className="h-5 w-5 text-primary-600" />
               : <BookOpen className="h-5 w-5 text-primary-600" />
             }
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-gray-900">{activeCourse.name}</h1>
-            {activeCourse.description && (
-              <p className="text-sm text-gray-500 mt-0.5">{activeCourse.description}</p>
+            <h1 className="text-xl font-bold text-gray-900">{course?.name ?? 'Course'}</h1>
+            {course?.description && (
+              <p className="text-sm text-gray-500 mt-0.5">{course.description}</p>
             )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-50 text-primary-700">
-                {activeCourse.goal === 'exam_prep' ? 'Exam Prep' : 'Classwork'}
+                {course?.goal === 'exam_prep' ? 'Exam Prep' : 'Classwork'}
               </span>
-              {activeCourse.exam_name && (
-                <span className="text-xs text-gray-400">{activeCourse.exam_name}</span>
+              {course?.exam_name && (
+                <span className="text-xs text-gray-400">{course.exam_name}</span>
               )}
             </div>
           </div>
@@ -84,8 +96,14 @@ export default function Page() {
       {/* Course tree */}
       <div>
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Course Structure</h2>
-        {activeCourse.subjects && activeCourse.subjects.length > 0 ? (
-          <CourseTree subjects={activeCourse.subjects} onStartSession={handleStartSession} topicProgress={topicProgress} chapterProgress={chapterProgress} />
+        {course?.subjects && course.subjects.length > 0 ? (
+          <CourseTree
+            subjects={course.subjects}
+            onStartSession={handleStartSession}
+            topicProgress={topicProgress}
+            chapterProgress={chapterProgress}
+            startingSessionKey={startingSessionKey}
+          />
         ) : (
           <p className="text-sm text-gray-500 text-center py-8">No topics found</p>
         )}

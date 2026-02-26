@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { useSessionStore } from '@/store/sessionStore';
 import type { Subject } from '@/types';
+import { buildSessionStartRoute } from '@/lib/sessionStartRoute';
 
 interface SidebarCourseTreeProps {
   subjects: Subject[];
@@ -15,7 +15,7 @@ interface SidebarCourseTreeProps {
 
 export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeChapterId, onNavigate }: SidebarCourseTreeProps) {
   const router = useRouter();
-  const { startSession } = useSessionStore();
+  const [startingSessionKey, setStartingSessionKey] = useState<string | null>(null);
 
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     // Auto-expand the subject (and optionally expose the topic) containing the active chapter or topic
@@ -49,10 +49,11 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
     });
   };
 
-  const handleNavigate = async (topicId: string, chapterId?: string) => {
+  const handleNavigate = (topicId: string, chapterId?: string) => {
+    const key = chapterId ? `${topicId}:${chapterId}` : topicId;
     onNavigate?.();
-    const sessionId = await startSession(courseId, topicId, chapterId);
-    router.push(`/sessions/${sessionId}`);
+    setStartingSessionKey(key);
+    router.push(buildSessionStartRoute({ courseId, topicId, chapterId }));
   };
 
   return (
@@ -72,38 +73,44 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
 
           {expanded.has(subject.id) && (
             <div className="ml-4 space-y-0.5">
-              {subject.topics.map(topic => (
-                <div key={topic.id}>
-                  <button
-                    onClick={() => handleNavigate(topic.id)}
-                    className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors truncate block ${
-                      topic.id === activeTopicId
-                        ? 'text-white bg-primary-700/50'
-                        : 'text-primary-200 hover:text-white hover:bg-primary-800'
-                    }`}
-                  >
-                    {topic.name}
-                  </button>
-                  <div className="ml-3 space-y-0.5">
-                    {topic.chapters.map(chapter => {
-                      const isActiveChapter = chapter.id === activeChapterId;
-                      return (
-                        <button
-                          key={chapter.id}
-                          onClick={() => handleNavigate(topic.id, chapter.id)}
-                          className={`w-full text-left px-2 py-0.5 rounded text-xs transition-colors truncate block ${
-                            isActiveChapter
-                              ? 'text-white bg-primary-700/50 font-medium'
-                              : 'text-primary-200 hover:text-white hover:bg-primary-800'
-                          }`}
-                        >
-                          • {chapter.name}
-                        </button>
-                      );
-                    })}
+              {subject.topics.map(topic => {
+                const isTopicStarting = startingSessionKey === topic.id;
+                return (
+                  <div key={topic.id}>
+                    <button
+                      onClick={() => handleNavigate(topic.id)}
+                      disabled={Boolean(startingSessionKey)}
+                      className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors truncate block ${
+                        topic.id === activeTopicId
+                          ? 'text-white bg-primary-700/50'
+                          : 'text-primary-200 hover:text-white hover:bg-primary-800'
+                      }`}
+                    >
+                      {isTopicStarting ? `${topic.name} (opening...)` : topic.name}
+                    </button>
+                    <div className="ml-3 space-y-0.5">
+                      {topic.chapters.map(chapter => {
+                        const isActiveChapter = chapter.id === activeChapterId;
+                        const isChapterStarting = startingSessionKey === `${topic.id}:${chapter.id}`;
+                        return (
+                          <button
+                            key={chapter.id}
+                            onClick={() => handleNavigate(topic.id, chapter.id)}
+                            disabled={Boolean(startingSessionKey)}
+                            className={`w-full text-left px-2 py-0.5 rounded text-xs transition-colors truncate block ${
+                              isActiveChapter
+                                ? 'text-white bg-primary-700/50 font-medium'
+                                : 'text-primary-200 hover:text-white hover:bg-primary-800'
+                            }`}
+                          >
+                            • {isChapterStarting ? `${chapter.name} (opening...)` : chapter.name}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
