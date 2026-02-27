@@ -1,7 +1,10 @@
 node_modules
 dist
+.next
 .env
 .env.local
+.env*.local
+tsconfig.tsbuildinfo
 .DS_Store
 *.log
 .turbo
@@ -14,3 +17,4 @@ server/data/*.db-wal
 
 # Uploaded files (user content, not source)
 server/uploads/
+.vercel
