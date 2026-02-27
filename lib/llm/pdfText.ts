@@ -51,9 +51,21 @@ async function extractWithPdfJs(buffer: Buffer, maxPages: number): Promise<strin
   }
 }
 
+interface PdfParseInstance {
+  getText: () => Promise<{ text?: string }>;
+  destroy: () => Promise<void>;
+}
+
+interface PdfParseCtor {
+  new (opts: Record<string, unknown>): PdfParseInstance;
+}
+
 async function extractWithPdfParse(buffer: Buffer): Promise<string> {
-  const { PDFParse } = await import('pdf-parse');
-  const parser = new PDFParse({ data: buffer });
+  // Context7 troubleshooting guidance:
+  // import CanvasFactory from pdf-parse/worker before importing pdf-parse in Node runtimes.
+  const { CanvasFactory } = await import('pdf-parse/worker');
+  const { PDFParse } = await import('pdf-parse') as unknown as { PDFParse: PdfParseCtor };
+  const parser = new PDFParse({ data: buffer, CanvasFactory });
 
   try {
     const result = await parser.getText();
@@ -65,14 +77,20 @@ async function extractWithPdfParse(buffer: Buffer): Promise<string> {
 
 export async function extractTextFromPdfBuffer(buffer: Buffer, maxPages = 30): Promise<string> {
   try {
-    const text = await extractWithPdfJs(buffer, maxPages);
+    const text = await extractWithPdfParse(buffer);
     if (text.trim()) return text;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.warn('[pdfText] pdfjs extraction failed, falling back:', message);
+    console.warn('[pdfText] pdf-parse extraction failed, falling back:', message);
   }
 
-  const fallbackText = await extractWithPdfParse(buffer);
-  if (fallbackText.trim()) return fallbackText;
+  try {
+    const fallbackText = await extractWithPdfJs(buffer, maxPages);
+    if (fallbackText.trim()) return fallbackText;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[pdfText] pdfjs fallback also failed:', message);
+  }
+
   throw new Error('Unable to extract text from PDF');
 }

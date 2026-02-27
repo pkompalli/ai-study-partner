@@ -4,6 +4,8 @@ import { extractExamFromPaper } from '@/lib/llm/examQuestionGenerator'
 import { checkRateLimit } from '@/lib/server/rateLimit'
 import { validateUploadedFiles } from '@/lib/server/uploadValidation'
 
+export const runtime = 'nodejs'
+
 // POST /api/exam/formats/extract-paper — extract exam format + questions from uploaded paper
 export async function POST(req: NextRequest) {
   try {
