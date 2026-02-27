@@ -110,6 +110,26 @@ export async function getSessionMessages(sessionId: string) {
   return data ?? []
 }
 
+export async function getLatestAssistantTextMessage(sessionId: string) {
+  const supabase = await createServiceClient()
+  const { data, error } = await supabase
+    .from('session_messages')
+    .select('id, role, content, content_type, metadata, created_at')
+    .eq('session_id', sessionId)
+    .eq('role', 'assistant')
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(20)
+  if (error) throw error
+
+  return (data ?? []).find(
+    (m) =>
+      m.content_type !== 'quiz' &&
+      m.content_type !== 'flashcards' &&
+      m.content_type !== 'videos',
+  ) ?? null
+}
+
 export async function saveMessage(
   sessionId: string,
   role: 'user' | 'assistant' | 'system',

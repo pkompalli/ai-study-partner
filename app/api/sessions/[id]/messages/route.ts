@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import {
+  getLatestAssistantTextMessage,
   getSessionById,
   getSessionMessages,
   saveMessage,
@@ -90,10 +91,7 @@ export async function GET(
 
     if (type === 'pills') {
       const courseCtx = await getCourseContext(session.course_id)
-      const messages = await getSessionMessages(id)
-      const lastAssistant = [...messages].reverse().find(
-        (m) => m.role === 'assistant' && m.content_type !== 'quiz' && m.content_type !== 'flashcards' && m.content_type !== 'videos',
-      )
+      const lastAssistant = await getLatestAssistantTextMessage(id)
       if (!lastAssistant) {
         return NextResponse.json({
           sourceMessageId: null,

@@ -1,7 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import type { Subject } from '@/types';
 import { buildSessionStartRoute } from '@/lib/sessionStartRoute';
 
@@ -15,7 +15,11 @@ interface SidebarCourseTreeProps {
 
 export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeChapterId, onNavigate }: SidebarCourseTreeProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [startingSessionKey, setStartingSessionKey] = useState<string | null>(null);
+  const routeKey = `${pathname}?${searchParams.toString()}`;
+  const routeKeyAtNavigateRef = useRef(routeKey);
 
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     // Auto-expand the subject (and optionally expose the topic) containing the active chapter or topic
@@ -41,6 +45,13 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
     }
   }, [activeTopicId, activeChapterId, subjects]);
 
+  // Reset transient loading indicator once navigation settles to a new route/query.
+  useEffect(() => {
+    if (!startingSessionKey) return;
+    if (routeKey === routeKeyAtNavigateRef.current) return;
+    setStartingSessionKey(null);
+  }, [routeKey, startingSessionKey]);
+
   const toggle = (id: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -52,6 +63,7 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
   const handleNavigate = (topicId: string, chapterId?: string) => {
     const key = chapterId ? `${topicId}:${chapterId}` : topicId;
     onNavigate?.();
+    routeKeyAtNavigateRef.current = routeKey;
     setStartingSessionKey(key);
     router.push(buildSessionStartRoute({ courseId, topicId, chapterId }));
   };
@@ -80,13 +92,16 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
                     <button
                       onClick={() => handleNavigate(topic.id)}
                       disabled={Boolean(startingSessionKey)}
-                      className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors truncate block ${
+                      className={`w-full text-left px-2 py-1 rounded-md text-xs font-medium transition-colors ${
                         topic.id === activeTopicId
                           ? 'text-white bg-primary-700/50'
                           : 'text-primary-200 hover:text-white hover:bg-primary-800'
                       }`}
                     >
-                      {isTopicStarting ? `${topic.name} (opening...)` : topic.name}
+                      <span className="flex items-center gap-2">
+                        <span className="truncate">{topic.name}</span>
+                        {isTopicStarting && <Loader2 className="h-3 w-3 animate-spin text-primary-300 flex-shrink-0" />}
+                      </span>
                     </button>
                     <div className="ml-3 space-y-0.5">
                       {topic.chapters.map(chapter => {
@@ -97,13 +112,16 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
                             key={chapter.id}
                             onClick={() => handleNavigate(topic.id, chapter.id)}
                             disabled={Boolean(startingSessionKey)}
-                            className={`w-full text-left px-2 py-0.5 rounded text-xs transition-colors truncate block ${
+                            className={`w-full text-left px-2 py-0.5 rounded text-xs transition-colors ${
                               isActiveChapter
                                 ? 'text-white bg-primary-700/50 font-medium'
                                 : 'text-primary-200 hover:text-white hover:bg-primary-800'
                             }`}
                           >
-                            • {isChapterStarting ? `${chapter.name} (opening...)` : chapter.name}
+                            <span className="flex items-center gap-2">
+                              <span className="truncate">• {chapter.name}</span>
+                              {isChapterStarting && <Loader2 className="h-3 w-3 animate-spin text-primary-300 flex-shrink-0" />}
+                            </span>
                           </button>
                         );
                       })}

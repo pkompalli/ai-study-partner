@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
-import { getSessionById, getSessionMessages } from '@/lib/db/sessions'
+import { getLatestAssistantTextMessage, getSessionById } from '@/lib/db/sessions'
 import { getCourseContext } from '@/lib/db/courses'
 import { generateResponsePills } from '@/lib/llm/pillsGenerator'
 import { inferAcademicLevel } from '@/lib/llm/prompts'
@@ -28,15 +28,7 @@ export async function GET(
       )
     }
 
-    // Get last assistant text message (ignore helper payload messages)
-    const messages = await getSessionMessages(id)
-    const lastAI = [...messages].reverse().find(
-      (m) =>
-        m.role === 'assistant' &&
-        m.content_type !== 'quiz' &&
-        m.content_type !== 'flashcards' &&
-        m.content_type !== 'videos',
-    )
+    const lastAI = await getLatestAssistantTextMessage(id)
     if (!lastAI) {
       return NextResponse.json({
         sourceMessageId: null,
