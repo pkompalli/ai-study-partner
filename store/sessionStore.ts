@@ -326,8 +326,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       set({ responsePills: normalized });
-    } catch {
-      // Preserve existing pills instead of blanking the Check panel on transient failures.
+    } catch (err) {
+      console.error('[fetchPills] failed:', err);
     }
   },
 

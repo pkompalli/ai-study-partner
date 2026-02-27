@@ -51,11 +51,9 @@ export async function GET(
     const courseCtx = await getCourseContext(session.course_id)
     const level = inferAcademicLevel(courseCtx?.yearOfStudy, courseCtx?.name)
 
-    const result = await generateResponsePills(
-      typeof lastAI.content === 'string' ? lastAI.content : '',
-      topicName,
-      level.label,
-    )
+    const aiContent = typeof lastAI.content === 'string' ? lastAI.content : ''
+
+    const result = await generateResponsePills(aiContent, topicName, level.label)
 
     return NextResponse.json({ sourceMessageId: lastAI.id ?? null, ...result })
   } catch (err: unknown) {
