@@ -4,7 +4,16 @@ export async function getCoursesByUser(userId: string) {
   const supabase = await createServiceClient()
   const { data, error } = await supabase
     .from('courses')
-    .select('*')
+    .select(`
+      *,
+      subjects (
+        *,
+        topics (
+          *,
+          chapters (*)
+        )
+      )
+    `)
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -108,8 +117,9 @@ export async function getCourseContext(courseId: string) {
     .from('courses')
     .select('name, goal, year_of_study, exam_name')
     .eq('id', courseId)
-    .single()
+    .maybeSingle()
   if (error) throw error
+  if (!data) return undefined
   return data
     ? {
         name: data.name,

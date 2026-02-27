@@ -22,7 +22,14 @@ interface SessionState {
   summaryStreaming: boolean;
   summaryStreamingContent: string;
   summaryDepth: number;
-  responsePills: { question: string; answerPills: string[]; correctIndex: number; explanation: string; followupPills: string[] } | null;
+  responsePills: {
+    sourceMessageId?: string | null;
+    question: string;
+    answerPills: string[];
+    correctIndex: number;
+    explanation: string;
+    followupPills: string[];
+  } | null;
   pillsLoading: boolean;
   flashcardsLoading: boolean;
   crossTopicCards: CrossTopicCard[];
@@ -87,7 +94,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isStreaming: true,
       streamingContent: '',
       responsePills: state.responsePills
-        ? { question: '', answerPills: [], correctIndex: -1, explanation: '', followupPills: state.responsePills.followupPills }
+        ? {
+            sourceMessageId: state.responsePills.sourceMessageId ?? null,
+            question: '',
+            answerPills: [],
+            correctIndex: -1,
+            explanation: '',
+            followupPills: state.responsePills.followupPills,
+          }
         : null,
     }));
 
@@ -278,18 +292,43 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   fetchPills: async (sessionId) => {
-    const { data } = await api.get<{ question: string; answerPills: string[]; correctIndex: number; explanation: string; followupPills: string[] }>(
-      `/api/sessions/${sessionId}/pills`
-    );
-    set({
-      responsePills: {
+    try {
+      const { data } = await api.get<{
+        sourceMessageId?: string | null;
+        question: string;
+        answerPills: string[];
+        correctIndex: number;
+        explanation: string;
+        followupPills: string[];
+      }>(`/api/sessions/${sessionId}/pills`);
+
+      const normalized = {
+        sourceMessageId: data.sourceMessageId ?? null,
         question: data.question ?? '',
         answerPills: data.answerPills ?? [],
         correctIndex: typeof data.correctIndex === 'number' ? data.correctIndex : -1,
         explanation: data.explanation ?? '',
         followupPills: data.followupPills ?? [],
-      },
-    });
+      };
+
+      const previous = get().responsePills;
+      const hasFreshMcq = normalized.question.trim().length > 0 && normalized.answerPills.length >= 2;
+
+      if (!hasFreshMcq && previous) {
+        // Keep existing MCQ visible when pills generation fails; only refresh follow-ups if available.
+        set({
+          responsePills: {
+            ...previous,
+            followupPills: normalized.followupPills.length > 0 ? normalized.followupPills : previous.followupPills,
+          },
+        });
+        return;
+      }
+
+      set({ responsePills: normalized });
+    } catch {
+      // Preserve existing pills instead of blanking the Check panel on transient failures.
+    }
   },
 
   fetchTopicBank: async (sessionId) => {

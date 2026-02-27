@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Outfit } from 'next/font/google'
 import './globals.css'
+import 'katex/dist/katex.min.css'
+import 'streamdown/styles.css'
 import { AuthInit } from '@/components/auth/AuthInit'
 
 const outfit = Outfit({

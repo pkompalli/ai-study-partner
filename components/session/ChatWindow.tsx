@@ -4,6 +4,7 @@ import { Minus, Plus } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { StreamingIndicator } from './StreamingIndicator';
 import { StreamingMarkdown } from '@/components/ui/StreamingMarkdown';
+import { RichMessageContent } from './RichMessageContent';
 import type { SessionMessage } from '@/types';
 
 interface ChatWindowProps {
@@ -60,7 +61,7 @@ export function ChatWindow({
 
               <div className="relative flex-1 min-w-0">
                 <div className="rounded-2xl rounded-bl-md px-4 py-3 pr-16 bg-white border border-gray-100 text-gray-900 shadow-sm">
-                  <StreamingMarkdown content={message.content} />
+                  <RichMessageContent content={message.content} />
                 </div>
 
                 {/* Depth controls — always visible, top-right */}

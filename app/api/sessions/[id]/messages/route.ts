@@ -94,12 +94,21 @@ export async function GET(
       const lastAssistant = [...messages].reverse().find(
         (m) => m.role === 'assistant' && m.content_type !== 'quiz' && m.content_type !== 'flashcards' && m.content_type !== 'videos',
       )
-      if (!lastAssistant) return NextResponse.json({ questions: [], followupPills: [] })
+      if (!lastAssistant) {
+        return NextResponse.json({
+          sourceMessageId: null,
+          question: '',
+          answerPills: [],
+          correctIndex: -1,
+          explanation: '',
+          followupPills: [],
+        })
+      }
 
       const { topicName } = await resolveNames(topicId)
       const level = inferAcademicLevel(courseCtx?.yearOfStudy, courseCtx?.name)
       const result = await generateResponsePills(lastAssistant.content, topicName, level.label)
-      return NextResponse.json(result)
+      return NextResponse.json({ sourceMessageId: lastAssistant.id ?? null, ...result })
     }
 
     if (type === 'summary') {

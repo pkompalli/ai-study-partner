@@ -494,7 +494,7 @@ export default function SessionPage() {
 
   // MCQ history
   const [mcqHistory, setMcqHistory] = useState<
-    Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }>
+    Array<{ sourceMessageId?: string | null; question: string; answerPills: string[]; correctIndex: number; explanation: string }>
   >([]);
   const [mcqHistoryIndex, setMcqHistoryIndex] = useState(0);
   const [mcqSelections, setMcqSelections] = useState<Record<number, number>>({});
@@ -542,6 +542,7 @@ export default function SessionPage() {
   const mcqExplanation = responsePills?.answerPills?.length
     ? responsePills.explanation
     : (topicSummary?.explanation ?? '');
+  const mcqSourceMessageId = responsePills?.sourceMessageId ?? null;
 
   // Scroll to bottom on new messages or streaming
   useEffect(() => {
@@ -554,15 +555,18 @@ export default function SessionPage() {
   useEffect(() => {
     if (!mcqQuestion || !mcqPills.length) return;
     setMcqHistory(prev => {
-      if (prev[prev.length - 1]?.question === mcqQuestion) return prev;
+      const last = prev[prev.length - 1];
+      if (mcqSourceMessageId && last?.sourceMessageId === mcqSourceMessageId) return prev;
+      if (!mcqSourceMessageId && last?.question === mcqQuestion) return prev;
       const next = [...prev, {
+        sourceMessageId: mcqSourceMessageId,
         question: mcqQuestion, answerPills: mcqPills,
         correctIndex: mcqCorrectIndex, explanation: mcqExplanation,
       }];
       setMcqHistoryIndex(next.length - 1);
       return next;
     });
-  }, [mcqQuestion]);
+  }, [mcqQuestion, mcqPills, mcqCorrectIndex, mcqExplanation, mcqSourceMessageId]);
 
   const currentMcq = mcqHistory[mcqHistoryIndex] ?? null;
 

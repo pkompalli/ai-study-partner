@@ -1,5 +1,13 @@
 import { createServiceClient } from '@/lib/supabase/server'
 
+function isMissingColumnError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== 'object') return false
+  const maybeMessage = (error as { message?: unknown }).message
+  if (typeof maybeMessage !== 'string') return false
+  const lower = maybeMessage.toLowerCase()
+  return lower.includes(`column "${columnName.toLowerCase()}"`) && lower.includes('does not exist')
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MarkCriterion {
@@ -124,10 +132,19 @@ export async function createExamFormat(
     user_id: userId,
   }))
 
-  const { data: secs, error: secsErr } = await supabase
+  let { data: secs, error: secsErr } = await supabase
     .from('exam_sections')
     .insert(sectionRows)
     .select()
+  if (secsErr && isMissingColumnError(secsErr, 'user_id')) {
+    const rowsWithoutUser = sectionRows.map(({ user_id: _userId, ...row }) => row)
+    const retry = await supabase
+      .from('exam_sections')
+      .insert(rowsWithoutUser)
+      .select()
+    secs = retry.data
+    secsErr = retry.error
+  }
   if (secsErr) throw secsErr
 
   return { ...fmt, sections: secs ?? [], question_count: 0 }
@@ -199,10 +216,19 @@ export async function replaceSections(
     user_id: userId,
   }))
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('exam_sections')
     .insert(sectionRows)
     .select()
+  if (error && isMissingColumnError(error, 'user_id')) {
+    const rowsWithoutUser = sectionRows.map(({ user_id: _userId, ...row }) => row)
+    const retry = await supabase
+      .from('exam_sections')
+      .insert(rowsWithoutUser)
+      .select()
+    data = retry.data
+    error = retry.error
+  }
   if (error) throw error
   return data ?? []
 }

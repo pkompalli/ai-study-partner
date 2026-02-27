@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { InlineMermaid } from './InlineMermaid';
 import { InlineQuiz } from './InlineQuiz';
 import { InlineFlashcards } from './InlineFlashcards';
+import 'katex/contrib/mhchem';
 
 /**
  * Normalise LaTeX delimiters so remark-math can process everything:

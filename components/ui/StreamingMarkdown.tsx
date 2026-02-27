@@ -1,12 +1,13 @@
 'use client'
 import { useMemo } from 'react'
 import { Streamdown } from 'streamdown'
-import { math } from '@streamdown/math'
+import { createMathPlugin } from '@streamdown/math'
 import type { Components } from 'streamdown'
 import { cn } from '@/lib/utils'
 import { InlineMermaid } from '@/components/session/InlineMermaid'
 import { InlineQuiz } from '@/components/session/InlineQuiz'
 import { InlineFlashcards } from '@/components/session/InlineFlashcards'
+import 'katex/contrib/mhchem'
 
 /**
  * Normalise LaTeX delimiters so @streamdown/math can process everything.
@@ -39,8 +40,8 @@ function preprocessLatex(content: string): string {
   return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i])
 }
 
-// Stable reference — math plugin is a singleton
-const PLUGINS = { math }
+// Allow single-$ inline math because the tutor prompts intentionally use $...$.
+const PLUGINS = { math: createMathPlugin({ singleDollarTextMath: true }) }
 
 function makeComponents(invert?: boolean): Components {
   return {

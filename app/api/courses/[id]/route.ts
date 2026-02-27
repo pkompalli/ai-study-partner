@@ -81,7 +81,11 @@ export async function PUT(
       subjects: Array<{
         id?: string
         name: string
-        topics: Array<{ id?: string; name: string }>
+        topics: Array<{
+          id?: string
+          name: string
+          chapters?: Array<{ id?: string; name: string }>
+        }>
       }>
     }
 
@@ -112,9 +116,19 @@ export async function PUT(
 
       for (let tIdx = 0; tIdx < (subj.topics ?? []).length; tIdx++) {
         const topic = subj.topics[tIdx]
-        await svc
+        const { data: topicRow, error: topicErr } = await svc
           .from('topics')
           .insert({ subject_id: subjRow.id, course_id: id, name: topic.name, sort_order: tIdx })
+          .select()
+          .single()
+        if (topicErr || !topicRow) continue
+
+        for (let cIdx = 0; cIdx < (topic.chapters ?? []).length; cIdx++) {
+          const chapter = topic.chapters![cIdx]
+          await svc
+            .from('chapters')
+            .insert({ topic_id: topicRow.id, course_id: id, name: chapter.name, sort_order: cIdx })
+        }
       }
     }
 

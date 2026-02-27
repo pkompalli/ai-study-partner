@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const uploadFiles = singleFile ? [singleFile] : files
     const uploadError = validateUploadedFiles(uploadFiles, {
       maxFiles: 30,
-      maxFileSizeBytes: 20 * 1024 * 1024,
+      maxFileSizeBytes: 25 * 1024 * 1024,
       allowedTypes: ['application/pdf', 'image/*'],
     })
     if (uploadError) return NextResponse.json({ error: uploadError }, { status: 400 })

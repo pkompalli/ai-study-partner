@@ -36,7 +36,15 @@ export async function POST(req: NextRequest) {
       sourceType?: string
       sourceFileUrl?: string
       rawInput?: string
-      structure?: { subjects?: Array<{ name: string; topics?: Array<{ name: string }> }> }
+      structure?: {
+        subjects?: Array<{
+          name: string
+          topics?: Array<{
+            name: string
+            chapters?: Array<{ name: string }>
+          }>
+        }>
+      }
     }
 
     const course = await createCourse(user.id, {
@@ -65,9 +73,19 @@ export async function POST(req: NextRequest) {
         if (subjErr || !subjRow) continue
         for (let tIdx = 0; tIdx < (subj.topics ?? []).length; tIdx++) {
           const topic = subj.topics![tIdx]
-          await svc
+          const { data: topicRow, error: topicErr } = await svc
             .from('topics')
             .insert({ subject_id: subjRow.id, course_id: course.id, name: topic.name, sort_order: tIdx })
+            .select()
+            .single()
+          if (topicErr || !topicRow) continue
+
+          for (let cIdx = 0; cIdx < (topic.chapters ?? []).length; cIdx++) {
+            const chapter = topic.chapters![cIdx]
+            await svc
+              .from('chapters')
+              .insert({ topic_id: topicRow.id, course_id: course.id, name: chapter.name, sort_order: cIdx })
+          }
         }
       }
     }

@@ -36,6 +36,60 @@ interface InferredFormat {
   }>;
 }
 
+const QUESTION_TYPE_ALIASES: Record<string, string> = {
+  mcq: 'mcq',
+  multiple_choice: 'mcq',
+  multiplechoice: 'mcq',
+  objective: 'mcq',
+  short_answer: 'short_answer',
+  shortanswer: 'short_answer',
+  saq: 'short_answer',
+  long_answer: 'long_answer',
+  longanswer: 'long_answer',
+  essay: 'long_answer',
+  data_analysis: 'data_analysis',
+  dataanalysis: 'data_analysis',
+  analysis: 'data_analysis',
+  calculation: 'calculation',
+  numerical: 'calculation',
+  problem_solving: 'calculation',
+};
+
+function normalizeQuestionType(raw: unknown): string {
+  const key = String(raw ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return QUESTION_TYPE_ALIASES[key] ?? 'short_answer';
+}
+
+function sanitizeInferredFormat(raw: Partial<InferredFormat>, examName: string): InferredFormat {
+  const sourceSections = Array.isArray(raw.sections) ? raw.sections : [];
+  const sections = sourceSections
+    .map((s, idx) => ({
+      name: String(s?.name ?? '').trim() || `Section ${String.fromCharCode(65 + idx)}`,
+      question_type: normalizeQuestionType(s?.question_type),
+      num_questions: Math.max(1, Math.round(Number(s?.num_questions ?? 0) || 0)),
+      marks_per_question: (typeof s?.marks_per_question === 'number' && s.marks_per_question > 0) ? s.marks_per_question : undefined,
+      total_marks: (typeof s?.total_marks === 'number' && s.total_marks > 0) ? s.total_marks : undefined,
+      instructions: typeof s?.instructions === 'string' ? s.instructions : undefined,
+    }))
+    .filter((s) => s.name.length > 0 && s.num_questions > 0);
+
+  const fallbackSections = sections.length > 0
+    ? sections
+    : [
+      { name: 'Section A — Multiple Choice', question_type: 'mcq', num_questions: 20, marks_per_question: 1, instructions: 'Answer all questions.' },
+      { name: 'Section B — Short Answer', question_type: 'short_answer', num_questions: 5, marks_per_question: 4, instructions: 'Answer any 5 questions.' },
+    ];
+
+  return {
+    name: String(raw.name ?? '').trim() || examName,
+    description: typeof raw.description === 'string' ? raw.description : undefined,
+    total_marks: (typeof raw.total_marks === 'number' && raw.total_marks > 0) ? raw.total_marks : undefined,
+    time_minutes: (typeof raw.time_minutes === 'number' && raw.time_minutes > 0) ? raw.time_minutes : undefined,
+    instructions: typeof raw.instructions === 'string' ? raw.instructions : undefined,
+    sections: fallbackSections,
+  };
+}
+
 // ─── Extract text from PDF ────────────────────────────────────────────────────
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
@@ -179,20 +233,22 @@ export async function inferExamFormat(examName: string, courseName: string): Pro
     { temperature: 0.3, maxTokens: 1200 },
   );
 
-  let parsed: InferredFormat;
+  let parsed: Partial<InferredFormat> = {};
   try {
-    parsed = JSON.parse(raw.trim());
+    const cleaned = raw.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    parsed = JSON.parse(cleaned);
   } catch {
     const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Failed to parse exam format from LLM response');
-    parsed = JSON.parse(match[0]);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        parsed = {};
+      }
+    }
   }
 
-  if (!parsed.name || !Array.isArray(parsed.sections)) {
-    throw new Error('Invalid exam format structure from LLM');
-  }
-
-  return parsed;
+  return sanitizeInferredFormat(parsed, examName);
 }
 
 // ─── Generate question bank ───────────────────────────────────────────────────
