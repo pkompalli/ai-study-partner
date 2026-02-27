@@ -255,7 +255,9 @@ export function FormatSetupPanel({
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl border border-gray-100 shadow-xl p-5 space-y-4 max-h-[92dvh] sm:max-h-[90dvh] overflow-y-auto">
       <div className="flex items-center gap-2">
         <GraduationCap className="h-4 w-4 text-primary-600" />
         <h3 className="font-semibold text-gray-900">Set up Exam Format</h3>
@@ -422,6 +424,7 @@ export function FormatSetupPanel({
           Cancel
         </button>
       )}
+      </div>
     </div>
   );
 }
