@@ -1,4 +1,5 @@
 import { chatCompletion } from '@/lib/llm/client';
+import { extractTextFromPdfBuffer } from '@/lib/llm/pdfText';
 import { COURSE_EXTRACTOR_PROMPT, PDF_COURSE_EXTRACTOR_PROMPT } from '@/lib/llm/prompts';
 import type { Subject } from '@/types';
 
@@ -9,35 +10,7 @@ export interface CourseStructure {
 }
 
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  // Dynamic import to avoid module-level init errors in Next.js RSC environment
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const uint8 = new Uint8Array(buffer);
-  const doc = await pdfjsLib.getDocument({ data: uint8, verbosity: 0 }).promise;
-  const pageTexts: string[] = [];
-
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    // Join items preserving rough layout: add newline when y position changes significantly
-    let lastY: number | null = null;
-    const lines: string[] = [];
-    let currentLine = '';
-    for (const item of content.items as Array<{ str: string; transform: number[] }>) {
-      const y = Math.round(item.transform[5]);
-      if (lastY !== null && Math.abs(y - lastY) > 3) {
-        if (currentLine.trim()) lines.push(currentLine.trim());
-        currentLine = item.str;
-      } else {
-        currentLine += (currentLine && item.str && !currentLine.endsWith(' ') ? ' ' : '') + item.str;
-      }
-      lastY = y;
-    }
-    if (currentLine.trim()) lines.push(currentLine.trim());
-    pageTexts.push(lines.join('\n'));
-  }
-
-  await doc.destroy();
-  return pageTexts.join('\n\n--- PAGE BREAK ---\n\n');
+  return extractTextFromPdfBuffer(buffer, 30);
 }
 
 export async function extractCourseFromText(text: string): Promise<CourseStructure> {

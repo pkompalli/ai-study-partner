@@ -1,6 +1,7 @@
 import { chatCompletion } from '@/lib/llm/client';
 import { buildExamFormatInferPrompt, buildExamQuestionPrompt, buildPaperExtractionPrompt } from '@/lib/llm/examPrompts';
 import { inferAcademicLevel } from '@/lib/llm/prompts';
+import { extractTextFromPdfBuffer } from '@/lib/llm/pdfText';
 import type { ExamSection, MarkCriterion } from '@/types';
 
 export interface TopicRef {
@@ -93,41 +94,7 @@ function sanitizeInferredFormat(raw: Partial<InferredFormat>, examName: string):
 // ─── Extract text from PDF ────────────────────────────────────────────────────
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
-  // Dynamic import to avoid module-level init errors in Next.js RSC environment
-  const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const uint8 = new Uint8Array(buffer);
-  const doc = await (pdfjsLib as unknown as { getDocument: (opts: unknown) => { promise: Promise<unknown> } })
-    .getDocument({ data: uint8, verbosity: 0 }).promise as {
-      numPages: number;
-      getPage: (n: number) => Promise<{ getTextContent: () => Promise<{ items: Array<{ str: string; transform: number[] }> }> }>;
-      destroy: () => Promise<void>;
-    };
-
-  const pageTexts: string[] = [];
-  const maxPages = Math.min(doc.numPages, 30); // cap at 30 pages
-
-  for (let i = 1; i <= maxPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    let lastY: number | null = null;
-    const lines: string[] = [];
-    let currentLine = '';
-    for (const item of content.items) {
-      const y = Math.round(item.transform[5]);
-      if (lastY !== null && Math.abs(y - lastY) > 3) {
-        if (currentLine.trim()) lines.push(currentLine.trim());
-        currentLine = item.str;
-      } else {
-        currentLine += (currentLine && item.str && !currentLine.endsWith(' ') ? ' ' : '') + item.str;
-      }
-      lastY = y;
-    }
-    if (currentLine.trim()) lines.push(currentLine.trim());
-    pageTexts.push(lines.join('\n'));
-  }
-
-  await doc.destroy();
-  return pageTexts.join('\n\n--- PAGE BREAK ---\n\n');
+  return extractTextFromPdfBuffer(buffer, 30);
 }
 
 // ─── Extracted paper result ───────────────────────────────────────────────────
