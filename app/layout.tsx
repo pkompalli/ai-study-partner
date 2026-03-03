@@ -12,8 +12,8 @@ const outfit = Outfit({
 })
 
 export const metadata: Metadata = {
-  title: 'StudyMate by OnCourse',
-  description: 'AI-powered study companion by OnCourse',
+  title: 'StudyMate by Oncourse',
+  description: 'AI-powered study companion by Oncourse',
   icons: {
     icon: '/oncourse-icon.png',
     apple: '/oncourse-icon.png',

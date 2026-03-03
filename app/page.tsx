@@ -15,7 +15,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-purple-50 flex flex-col">
       {/* Header */}
       <header className="px-6 py-4 flex items-center">
-        <Image src="/oncourse-logo.png" alt="OnCourse" width={160} height={36} className="h-9 w-auto" />
+        <Image src="/oncourse-logo.png" alt="Oncourse" width={160} height={36} className="h-9 w-auto" />
       </header>
 
       {/* Hero */}

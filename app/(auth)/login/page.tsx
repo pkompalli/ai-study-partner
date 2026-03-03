@@ -36,7 +36,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex justify-center mb-8">
-          <Image src="/oncourse-logo.png" alt="OnCourse" width={180} height={40} className="h-10 w-auto" />
+          <Image src="/oncourse-logo.png" alt="Oncourse" width={180} height={40} className="h-10 w-auto" />
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h1>

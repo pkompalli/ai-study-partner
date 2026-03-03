@@ -19,7 +19,7 @@ export function TopBar() {
       </button>
 
       <div className="flex items-center gap-2 flex-1">
-        <Image src="/oncourse-icon.png" alt="OnCourse" width={24} height={24} className="rounded" />
+        <Image src="/oncourse-icon.png" alt="Oncourse" width={24} height={24} className="rounded" />
         <span className="font-semibold text-gray-900 text-sm">StudyMate</span>
       </div>
 

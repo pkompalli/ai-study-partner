@@ -53,7 +53,7 @@ export function Sidebar() {
     >
       {/* Logo — click goes to Dashboard */}
       <Link href="/dashboard" onClick={closeMobile} className="p-4 border-b border-primary-800/50 flex items-center gap-2 flex-shrink-0 hover:bg-primary-900 transition-colors">
-        <Image src="/oncourse-icon.png" alt="OnCourse" width={32} height={32} className="rounded-lg flex-shrink-0" />
+        <Image src="/oncourse-icon.png" alt="Oncourse" width={32} height={32} className="rounded-lg flex-shrink-0" />
         <span className="font-bold text-white">StudyMate</span>
       </Link>
 
