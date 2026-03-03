@@ -18,16 +18,13 @@ interface SessionState {
   activeQuiz: { id: string; questions: QuizQuestion[] } | null;
   activeFlashcards: { id: string; cards: Flashcard[] } | null;
   activeVideos: VideoLink[] | null;
-  topicSummary: { summary: string; question: string; answerPills: string[]; correctIndex: number; explanation: string; starters: string[] } | null;
+  topicSummary: { summary: string; questions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }>; starters: string[] } | null;
   summaryStreaming: boolean;
   summaryStreamingContent: string;
   summaryDepth: number;
   responsePills: {
     sourceMessageId?: string | null;
-    question: string;
-    answerPills: string[];
-    correctIndex: number;
-    explanation: string;
+    questions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }>;
     followupPills: string[];
   } | null;
   pillsLoading: boolean;
@@ -70,6 +67,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   crossTopicCards: [],
 
   startSession: async (courseId, topicId, chapterId) => {
+    // Clear stale data from previous session before navigating so the new
+    // page doesn't briefly render old topic's questions/cards
+    set({
+      topicSummary: null,
+      responsePills: null,
+      summaryStreaming: false,
+      summaryStreamingContent: '',
+      activeFlashcards: null,
+    });
     const { data } = await api.post<{ id: string }>('/api/sessions', { courseId, topicId, chapterId });
     return data.id;
   },
@@ -77,7 +83,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadSession: async (sessionId) => {
     const { data } = await api.get<StudySession & { messages: SessionMessage[] }>(`/api/sessions/${sessionId}`);
     const { messages, ...session } = data;
-    set({ activeSession: session, messages: messages ?? [], responsePills: null });
+    set({ activeSession: session, messages: messages ?? [], responsePills: null, topicSummary: null, summaryStreaming: false, summaryStreamingContent: '', activeFlashcards: null });
     // Load topic bank in the background — cards and questions appear immediately for returning students
     get().fetchTopicBank(sessionId).catch(() => {});
   },
@@ -96,10 +102,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       responsePills: state.responsePills
         ? {
             sourceMessageId: state.responsePills.sourceMessageId ?? null,
-            question: '',
-            answerPills: [],
-            correctIndex: -1,
-            explanation: '',
+            questions: [],
             followupPills: state.responsePills.followupPills,
           }
         : null,
@@ -238,7 +241,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (depth > 0) {
       set({ summaryDepth: depth });
     }
-    set({ summaryStreaming: true, summaryStreamingContent: '', topicSummary: null });
+    set({ summaryStreaming: true, summaryStreamingContent: '', topicSummary: null, responsePills: null });
 
     try {
       const url = `${API_BASE}/api/sessions/${sessionId}/summary?depth=${depth}${force ? '&force=true' : ''}`;
@@ -269,14 +272,25 @@ export const useSessionStore = create<SessionState>((set, get) => ({
               accumulated += json.content;
               set({ summaryStreamingContent: accumulated });
             } else if (json.type === 'done') {
+              // Parse questions array from server
+              const questions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }> =
+                Array.isArray(json.questions) ? json.questions.filter(
+                  (q: { question?: string; answerPills?: string[] }) => q.question?.trim() && (q.answerPills?.length ?? 0) >= 2
+                ) : [];
+              // Fallback: old single-question format
+              if (questions.length === 0 && json.question) {
+                questions.push({
+                  question: json.question,
+                  answerPills: json.answerPills ?? [],
+                  correctIndex: typeof json.correctIndex === 'number' ? json.correctIndex : -1,
+                  explanation: json.explanation ?? '',
+                });
+              }
               set({
                 summaryDepth: typeof json.depth === 'number' ? json.depth : (depth || 1),
                 topicSummary: {
                   summary: accumulated,
-                  question: json.question ?? '',
-                  answerPills: json.answerPills ?? [],
-                  correctIndex: typeof json.correctIndex === 'number' ? json.correctIndex : -1,
-                  explanation: json.explanation ?? '',
+                  questions,
                   starters: json.starters ?? [],
                 },
                 summaryStreaming: false,
@@ -295,26 +309,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     try {
       const { data } = await api.get<{
         sourceMessageId?: string | null;
-        question: string;
-        answerPills: string[];
-        correctIndex: number;
-        explanation: string;
+        questions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }>;
         followupPills: string[];
       }>(`/api/sessions/${sessionId}/pills`);
 
+      const questions = (data.questions ?? []).filter(
+        q => q.question?.trim().length > 0 && q.answerPills?.length >= 2
+      );
+
       const normalized = {
         sourceMessageId: data.sourceMessageId ?? null,
-        question: data.question ?? '',
-        answerPills: data.answerPills ?? [],
-        correctIndex: typeof data.correctIndex === 'number' ? data.correctIndex : -1,
-        explanation: data.explanation ?? '',
+        questions,
         followupPills: data.followupPills ?? [],
       };
 
       const previous = get().responsePills;
-      const hasFreshMcq = normalized.question.trim().length > 0 && normalized.answerPills.length >= 2;
 
-      if (!hasFreshMcq && previous) {
+      if (questions.length === 0 && previous) {
         // Keep existing MCQ visible when pills generation fails; only refresh follow-ups if available.
         set({
           responsePills: {

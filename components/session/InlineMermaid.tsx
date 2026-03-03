@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 
 // ── Semantic colour palette ───────────────────────────────────────────────────
 const SEMANTIC: Record<string, string> = {
@@ -155,17 +155,23 @@ async function safeRender(
   }
 }
 
+const ZOOM_STEP = 0.2;
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 2.5;
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function InlineMermaid({ code }: { code: string }) {
   const uid = useId().replace(/:/g, '');
   const id  = `mermaid-${uid}`;
   const [svg,   setSvg]   = useState<string>('');
   const [error, setError] = useState(false);
+  const [zoom,  setZoom]  = useState(1);
 
   useEffect(() => {
     let cancelled = false;
     setError(false);
     setSvg('');
+    setZoom(1);
 
     const clean = sanitiseMermaidCode(code);
 
@@ -183,6 +189,10 @@ export function InlineMermaid({ code }: { code: string }) {
     return () => { cancelled = true; };
   }, [id, code]);
 
+  const zoomIn  = useCallback(() => setZoom(z => Math.min(z + ZOOM_STEP, ZOOM_MAX)), []);
+  const zoomOut = useCallback(() => setZoom(z => Math.max(z - ZOOM_STEP, ZOOM_MIN)), []);
+  const zoomReset = useCallback(() => setZoom(1), []);
+
   // Silently suppress failed diagrams — showing an error inside lesson content
   // is more disruptive than simply omitting the visual.
   if (error) return null;
@@ -191,18 +201,55 @@ export function InlineMermaid({ code }: { code: string }) {
     return <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse my-4" />;
   }
 
-  // Inject white background + block display into the SVG element so Tailwind
-  // Typography's prose context (which darkens SVG content) has no effect.
+  // Inject white background into the SVG. Do NOT set width:100% — let SVG keep
+  // its natural dimensions so CSS zoom actually works.
   const renderedSvg = svg.replace(
     /<svg\b/,
-    '<svg style="background:white;display:block;min-height:80px"',
+    '<svg style="background:white;display:block;min-height:80px;max-width:100%"',
   );
+
+  const zoomPct = Math.round(zoom * 100);
 
   return (
     // not-prose: escape Tailwind Typography so prose rules don't dark-style the SVG
-    <div
-      className="not-prose my-4 overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm max-h-[80vh]"
-      dangerouslySetInnerHTML={{ __html: renderedSvg }}
-    />
+    <div className="not-prose my-4 rounded-2xl border border-slate-100 bg-white shadow-sm">
+      {/* Zoom toolbar */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
+        <button
+          onClick={zoomOut}
+          disabled={zoom <= ZOOM_MIN}
+          className="p-1 rounded hover:bg-slate-200 disabled:opacity-30 transition-opacity text-slate-500"
+          title="Zoom out"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </button>
+        <button
+          onClick={zoomReset}
+          className="text-xs text-slate-400 hover:text-slate-600 tabular-nums px-1 min-w-[40px] text-center"
+          title="Reset zoom"
+        >
+          {zoomPct}%
+        </button>
+        <button
+          onClick={zoomIn}
+          disabled={zoom >= ZOOM_MAX}
+          className="p-1 rounded hover:bg-slate-200 disabled:opacity-30 transition-opacity text-slate-500"
+          title="Zoom in"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </button>
+      </div>
+      {/* Diagram container — scrollable when zoomed in */}
+      <div className="overflow-auto max-h-[70vh]">
+        <div
+          style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
+          dangerouslySetInnerHTML={{ __html: renderedSvg }}
+        />
+      </div>
+    </div>
   );
 }

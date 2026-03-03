@@ -58,6 +58,18 @@ export async function GET(
       }
 
       if (cached) {
+        // Reconstruct questions array from cache
+        let cachedQuestions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }> = []
+        try {
+          const parsed = JSON.parse(cached.question)
+          if (Array.isArray(parsed)) cachedQuestions = parsed
+        } catch {
+          // Old single-question cache format
+          if (cached.question) {
+            cachedQuestions = [{ question: cached.question, answerPills: cached.answer_pills, correctIndex: cached.correct_index, explanation: cached.explanation }]
+          }
+        }
+
         // Stream the cached summary back as SSE so the client handles it identically
         const encoder = new TextEncoder()
         const stream = new ReadableStream({
@@ -69,10 +81,7 @@ export async function GET(
               `data: ${JSON.stringify({
                 type: 'done',
                 depth: cached.depth,
-                question: cached.question,
-                answerPills: cached.answer_pills,
-                correctIndex: cached.correct_index,
-                explanation: cached.explanation,
+                questions: cachedQuestions,
                 starters: cached.starters,
               })}\n\n`
             ))
@@ -132,21 +141,19 @@ export async function GET(
             `data: ${JSON.stringify({
               type: 'done',
               depth,
-              question: final.question,
-              answerPills: final.answerPills,
-              correctIndex: final.correctIndex,
-              explanation: final.explanation,
+              questions: final.questions,
               starters: final.starters,
             })}\n\n`
           ))
 
-          // Save to cache in the background
+          // Save to cache in the background — store questions array as JSON in the question column
+          const firstQ = final.questions[0]
           const cachePayload = {
             summary: final.summary,
-            question: final.question,
-            answer_pills: final.answerPills,
-            correct_index: final.correctIndex,
-            explanation: final.explanation,
+            question: JSON.stringify(final.questions),
+            answer_pills: firstQ?.answerPills ?? [],
+            correct_index: firstQ?.correctIndex ?? -1,
+            explanation: firstQ?.explanation ?? '',
             starters: final.starters,
           }
           if (session.chapter_id) {

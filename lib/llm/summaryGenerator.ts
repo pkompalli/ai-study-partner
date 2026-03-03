@@ -1,12 +1,16 @@
 import { chatCompletion, chatCompletionStream } from '@/lib/llm/client';
 import { buildSummaryProsePrompt, buildSummaryInteractivePrompt } from '@/lib/llm/prompts';
 
-export interface SummaryInteractiveResult {
-  summary: string;
+export interface SummaryQuestion {
   question: string;
   answerPills: string[];
   correctIndex: number;
   explanation: string;
+}
+
+export interface SummaryInteractiveResult {
+  summary: string;
+  questions: SummaryQuestion[];
   starters: string[];
 }
 
@@ -38,21 +42,22 @@ export async function* streamTopicSummaryGenerator(
     params.depth ?? 0,
   );
 
+  // Scale token budget by depth so deeper summaries aren't truncated
+  const depth = params.depth ?? 0;
+  const proseTokenLimit = depth <= 1 ? 1500 : depth === 2 ? 2000 : depth === 3 ? 3500 : depth === 4 ? 5000 : 7000;
+
   // Stream the prose summary
   let summaryAccumulated = '';
   for await (const chunk of chatCompletionStream([
     { role: 'system', content: prosePrompt },
     { role: 'user', content: 'Write the summary.' },
-  ], { maxTokens: 1500 })) {
+  ], { maxTokens: proseTokenLimit })) {
     summaryAccumulated += chunk;
     yield chunk;
   }
 
-  // Generate question + answerPills + correctIndex + explanation + starters non-streaming (fast, separate call)
-  let question = '';
-  let answerPills: string[] = [];
-  let correctIndex = -1;
-  let explanation = '';
+  // Generate comprehension questions + starters non-streaming (fast, separate call)
+  let questions: SummaryQuestion[] = [];
   let starters: string[] = [];
   try {
     const interactivePrompt = buildSummaryInteractivePrompt(
@@ -60,19 +65,40 @@ export async function* streamTopicSummaryGenerator(
       params.chapterName,
       params.courseName,
       params.yearOfStudy,
+      summaryAccumulated,
     );
     const raw = await chatCompletion([
       { role: 'system', content: interactivePrompt },
-      { role: 'user', content: 'Generate the interactive elements.' },
-    ], { temperature: 0.5, maxTokens: 500 });
+      { role: 'user', content: 'Generate the comprehension questions and exploration suggestions.' },
+    ], { temperature: 0.5, maxTokens: 1500 });
     const jsonStr = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
     const parsed = JSON.parse(jsonStr);
-    question = typeof parsed.question === 'string' ? parsed.question : '';
-    answerPills = Array.isArray(parsed.answerPills) ? parsed.answerPills : [];
-    correctIndex = typeof parsed.correctIndex === 'number' ? parsed.correctIndex : -1;
-    explanation = typeof parsed.explanation === 'string' ? parsed.explanation : '';
+
+    // Parse questions array (new multi-question format)
+    if (Array.isArray(parsed.questions)) {
+      for (const q of parsed.questions) {
+        if (q && typeof q.question === 'string' && Array.isArray(q.answerPills)) {
+          questions.push({
+            question: q.question,
+            answerPills: q.answerPills,
+            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : -1,
+            explanation: typeof q.explanation === 'string' ? q.explanation : '',
+          });
+        }
+      }
+    }
+    // Fallback: old single-question format
+    if (questions.length === 0 && typeof parsed.question === 'string') {
+      questions.push({
+        question: parsed.question,
+        answerPills: Array.isArray(parsed.answerPills) ? parsed.answerPills : [],
+        correctIndex: typeof parsed.correctIndex === 'number' ? parsed.correctIndex : -1,
+        explanation: typeof parsed.explanation === 'string' ? parsed.explanation : '',
+      });
+    }
+
     starters = Array.isArray(parsed.starters) ? parsed.starters : [];
   } catch { /* fields remain empty */ }
 
-  return { summary: summaryAccumulated, question, answerPills, correctIndex, explanation, starters };
+  return { summary: summaryAccumulated, questions, starters };
 }

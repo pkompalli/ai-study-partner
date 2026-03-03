@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   getSessionsByUser,
   getSessionsByCourse,
+  findActiveSession,
   createSession,
 } from '@/lib/db/sessions'
 
@@ -37,6 +38,11 @@ export async function POST(req: NextRequest) {
       courseId: string
       topicId?: string
       chapterId?: string
+    }
+
+    const existing = await findActiveSession(user.id, courseId, topicId, chapterId)
+    if (existing) {
+      return NextResponse.json({ id: existing.id }, { status: 200 })
     }
 
     const session = await createSession(user.id, {

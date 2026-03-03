@@ -210,14 +210,20 @@ Guidelines for multi-modal use:
   - NEVER use curly braces { } or square brackets [ ] inside any node label
   - Use plain ASCII text only; spell out names (e.g. "HA" not "H_A", "H2O" not "H₂O")
   - If a label must contain special characters, wrap the entire label in double quotes: A["label with (parens)"]
-  - Keep labels short (3–6 words max) — put detail in edge labels or prose`;
+  - Keep labels short (3–6 words max) — put detail in edge labels or prose
+  - Keep diagrams compact: aim for 6–10 nodes maximum. If a process has more steps, break it into 2 separate diagrams or summarise sub-processes into single nodes
+  - Use flowchart TD (top-down) for most diagrams — it renders more compactly than LR
+  - NEVER create deeply nested subgraphs or diagrams with 15+ nodes — they overflow the viewport and become unreadable
+  - Use ONLY standard mermaid arrow syntax: -->, --->, ---|label|, -->|label|. NEVER use Unicode arrows (→, ←, ↔, ⇌) inside mermaid blocks
+  - Every diagram MUST start with a declaration line like "flowchart TD" or "graph LR" — do not write ad-hoc text diagrams
+  - If you cannot express a relationship cleanly in mermaid syntax, use a markdown table or prose instead — do NOT produce invalid mermaid`;
 }
 
 const DEPTH_SUMMARY_INSTRUCTIONS: Record<number, string> = {
   1: 'Write a bullet-point summary of key concepts only. Target half an A4 page. No paragraphs, no elaboration, no examples — just the essential points a student needs to know.',
   2: 'Write a brief overview using short paragraphs and bullet points. Target roughly one A4 page. Introduce each core concept with just enough explanation to orient the student, but no deep dives.',
-  3: 'Write a thorough explanation targeting 2–3 A4 pages of content. Explain each concept fully with real-world examples and analogies. Show the logical flow between ideas. Include key equations where relevant. Use mermaid diagrams to represent processes, relationships, or flows wherever a visual communicates better than prose.',
-  4: 'Write a detailed treatment targeting 4–5 A4 pages. Go beyond surface explanation — include derivations, quantitative reasoning, edge cases, and inter-topic connections. Use diagrams and worked examples extensively.',
+  3: 'Write a thorough explanation targeting 2–3 A4 pages of content. Explain each concept fully with real-world examples and analogies. Show the logical flow between ideas. Include key equations where relevant. Use mermaid diagrams to represent processes, relationships, or flows wherever a visual communicates better than prose. Keep each diagram compact (6–10 nodes max) — split complex processes into multiple small diagrams rather than one large one.',
+  4: 'Write a detailed treatment targeting 4–5 A4 pages. Go beyond surface explanation — include derivations, quantitative reasoning, edge cases, and inter-topic connections. Use diagrams and worked examples extensively. Keep each diagram compact (6–10 nodes max) — split complex processes into multiple small diagrams rather than one large one.',
   5: 'Write a comprehensive, textbook-quality deep dive with no length cap. Cover the topic as a rigorous academic text would — full derivations, formal definitions, proofs where relevant, discussion of assumptions and limitations, connections to advanced topics, and multiple worked examples. This should read as a complete reference document.',
 };
 
@@ -251,7 +257,9 @@ Requirements:
 - Write DIRECTLY about the content. No meta-language anywhere — not at the start ("in this topic you will learn"), not at the end ("understanding this helps explain...", "studying X is crucial for...", "this knowledge is important because..."). Just explain the concepts directly, as if the student is already sitting with you mid-conversation.
 - Do NOT end with a question, prompt, or invite to reflect. The interface provides interactive comprehension checks below the summary — do not duplicate that here. End on a content statement, not a question.
 - NEVER include callout boxes or any framing labelled "Exam Tip", "Study Tip", "Pro Tip", "Test-Taking Strategy", "Note:", "Important:", or similar. No advice about what question types appear on exams, no commentary about which solvents or scenarios are "most common in tests". Just rigorous direct content.
-- Write at high conceptual density. Every sentence should carry substantive meaning — mechanism, consequence, distinction, or application. Do not pad with motivation, context-setting about why the topic matters, or accessibility commentary.`;
+- Write at high conceptual density. Every sentence should carry substantive meaning — mechanism, consequence, distinction, or application. Do not pad with motivation, context-setting about why the topic matters, or accessibility commentary.
+- NEVER use ASCII art, text-art grids, pseudo-diagrams with arrows (→, ←, ↔, ⇌), or plain code blocks to represent diagrams, processes, or relationships. These render as ugly monospaced text. Instead: use a proper \`\`\`mermaid code fence (with "flowchart TD" declaration, standard --> arrows, plain ASCII labels, 6–10 nodes max), OR use a markdown table, OR describe the relationship in prose. There is no other option.
+- For all mathematical and chemical notation use LaTeX: inline math with $...$, display equations with $$...$$, and chemical formulas with \\ce{...}. Never write formulas as plain text.`;
 }
 
 export function buildSummaryInteractivePrompt(
@@ -259,29 +267,44 @@ export function buildSummaryInteractivePrompt(
   chapterName: string | undefined,
   courseName: string,
   yearOfStudy: string | undefined,
+  summaryContent?: string,
 ): string {
   const level = inferAcademicLevel(yearOfStudy, courseName);
+  const contentLen = (summaryContent ?? '').trim().length;
+  const qCount = contentLen < 300 ? 2 : contentLen < 800 ? 3 : contentLen < 1500 ? 4 : 5;
+
   return `Generate interactive study elements for a ${level.label} student who just read a summary of "${topicName}"${chapterName ? ` > "${chapterName}"` : ''} in ${courseName}.
 
+${summaryContent ? `The summary content is:\n---\n${summaryContent.slice(0, 2000)}\n---\n` : ''}
 Return ONLY valid JSON — no markdown, no code fences:
 {
-  "question": "One concise comprehension question about the key concept?",
-  "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
-  "correctIndex": 2,
-  "explanation": "1-2 sentence plain-language explanation of why the correct answer is right.",
+  "questions": [
+    {
+      "question": "Concise comprehension-check question?",
+      "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
+      "correctIndex": 2,
+      "explanation": "1-2 sentence explanation of why the correct answer is right."
+    }
+  ],
   "starters": ["Exploration suggestion 1...", "Suggestion 2...", "Suggestion 3..."]
 }
 
 Requirements:
-- question: ONE question that demands genuine conceptual understanding — test mechanism, consequence, causal reasoning, or the ability to distinguish between closely related ideas. Avoid surface-recall ("what is X defined as?"). Push the student to think, not just remember.
-- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE distractors that are plausible to a student who partially understands (common misconceptions, subtly wrong quantities, reversed causality). RANDOMIZE the position of the correct answer.
+- Generate exactly ${qCount} questions in the "questions" array. Each should help the student check whether they truly understood what they just read.
+- Each question should cover a DIFFERENT key concept or aspect from the summary. Do not repeat the same idea.
+- Each question should demand genuine conceptual understanding — test mechanism, consequence, causal reasoning, or the ability to distinguish between closely related ideas. Avoid surface-recall ("what is X defined as?"). Push the student to think, not just remember.
+- answerPills: exactly 4 short answer options per question, 2-6 words each — ONE correct, THREE distractors that are plausible to a student who partially understands (common misconceptions, subtly wrong quantities, reversed causality). RANDOMIZE the position of the correct answer.
 - correctIndex: integer 0–3 indicating which answerPill is correct
 - explanation: 1-2 sentences that explain the underlying mechanism or reasoning — not just "A is correct because the definition says so", but WHY the concept works that way
 - starters: 3 exploration suggestions, 8-14 words each, framing intellectually stimulating next angles — edge cases, connections to other concepts, real-world applications, or deeper mechanisms
-- Calibrate depth and language to a ${level.label} student — the question should be appropriately challenging for that level, not trivial`;
+- Calibrate depth and language to a ${level.label} student — questions should be appropriately challenging for that level, not trivial`;
 }
 
 export function buildPillsPrompt(aiResponse: string, topicName: string, levelLabel: string): string {
+  // Decide question count based on content length
+  const contentLen = aiResponse.trim().length;
+  const qCount = contentLen < 300 ? 2 : contentLen < 800 ? 3 : contentLen < 1500 ? 4 : 5;
+
   return `You are analyzing a tutoring conversation about "${topicName}" with a ${levelLabel} student.
 
 The tutor just responded with:
@@ -290,21 +313,27 @@ ${aiResponse.slice(0, 2000)}
 ---
 
 Generate:
-1. ONE comprehension question based on the key concept just taught, with short answer pills
+1. ${qCount} comprehension-check questions that help the student verify whether they truly understood what they just read. Each question should have 4 short answer pills.
 2. 3 follow-up exploration suggestions for the student's next steps
 
 Return ONLY valid JSON — no markdown, no code fences:
 {
-  "question": "One concise comprehension question about the key concept?",
-  "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
-  "correctIndex": 1,
-  "explanation": "1-2 sentence plain-language explanation of why the correct answer is right.",
+  "questions": [
+    {
+      "question": "Concise comprehension question?",
+      "answerPills": ["Short option A", "Short option B", "Short option C", "Short option D"],
+      "correctIndex": 1,
+      "explanation": "1-2 sentence explanation of why the correct answer is right."
+    }
+  ],
   "followupPills": ["Next exploration suggestion 1...", "Suggestion 2...", "Suggestion 3..."]
 }
 
 Guidelines:
-- question: ONE question that demands genuine conceptual understanding — test mechanism, consequence, causal reasoning, or the ability to distinguish between closely related ideas. Avoid surface-recall ("what is X defined as?"). Push the student to think, not just remember. Base it tightly on what was just taught.
-- answerPills: exactly 4 short answer options, 2-6 words each — ONE correct, THREE distractors that are plausible to a student who partially understands (common misconceptions, subtly wrong quantities, reversed causality). RANDOMIZE the position of the correct answer.
+- Generate exactly ${qCount} questions in the "questions" array.
+- Each question should help the student check their own understanding of what they just read — "Did I actually get this?" Test whether the student grasped the mechanism, consequence, causal reasoning, or can distinguish between closely related ideas. Avoid surface-recall ("what is X defined as?"). Push the student to think, not just remember.
+- Each question should cover a DIFFERENT key concept or aspect from the content. Do not repeat the same idea.
+- answerPills: exactly 4 short answer options per question, 2-6 words each — ONE correct, THREE distractors that are plausible to a student who partially understands (common misconceptions, subtly wrong quantities, reversed causality). RANDOMIZE the position of the correct answer.
 - correctIndex: integer 0–3 indicating which answerPill is correct
 - explanation: 1-2 sentences that explain the underlying mechanism or reasoning — not just "A is correct because the definition says so", but WHY the concept works that way
 - followupPills: 5-12 words each, intellectually stimulating next-step explorations — edge cases, mechanisms the student hasn't encountered yet, real-world applications, or conceptual tensions worth probing`;

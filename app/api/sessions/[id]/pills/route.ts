@@ -32,10 +32,7 @@ export async function GET(
     if (!lastAI) {
       return NextResponse.json({
         sourceMessageId: null,
-        question: '',
-        answerPills: [],
-        correctIndex: -1,
-        explanation: '',
+        questions: [],
         followupPills: [],
       })
     }

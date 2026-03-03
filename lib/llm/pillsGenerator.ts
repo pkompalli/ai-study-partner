@@ -1,11 +1,15 @@
 import { chatCompletion } from '@/lib/llm/client';
 import { buildPillsPrompt } from '@/lib/llm/prompts';
 
-type PillsResult = {
+type PillQuestion = {
   question: string;
   answerPills: string[];
   correctIndex: number;
   explanation: string;
+}
+
+type PillsResult = {
+  questions: PillQuestion[];
   followupPills: string[];
 }
 
@@ -21,6 +25,36 @@ function toStringArray(value: unknown): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+function parseOneQuestion(obj: Record<string, unknown>): PillQuestion | null {
+  const question = typeof obj.question === 'string'
+    ? obj.question
+    : (typeof obj.mcqQuestion === 'string' ? obj.mcqQuestion : '');
+
+  if (!question) return null;
+
+  const answerPillsRaw =
+    obj.answerPills ??
+    obj.answer_pills ??
+    obj.options ??
+    obj.answerOptions ??
+    obj.answer_options;
+  const answerPills = toStringArray(answerPillsRaw).slice(0, 4);
+
+  const correctIndexRaw = obj.correctIndex ?? obj.correct_index;
+  const correctIndex = typeof correctIndexRaw === 'number'
+    ? correctIndexRaw
+    : Number.isFinite(Number(correctIndexRaw)) ? Number(correctIndexRaw) : -1;
+
+  const explanation = typeof obj.explanation === 'string' ? obj.explanation : '';
+
+  return {
+    question,
+    answerPills,
+    correctIndex: correctIndex >= 0 && correctIndex < answerPills.length ? correctIndex : -1,
+    explanation,
+  };
 }
 
 function parsePillsPayload(raw: string): PillsResult {
@@ -45,27 +79,26 @@ function parsePillsPayload(raw: string): PillsResult {
   }
 
   if (!parsed) {
-    return { question: '', answerPills: [], correctIndex: -1, explanation: '', followupPills: [] };
+    return { questions: [], followupPills: [] };
   }
 
-  const question = typeof parsed.question === 'string'
-    ? parsed.question
-    : (typeof parsed.mcqQuestion === 'string' ? parsed.mcqQuestion : '');
+  // Parse questions array (new multi-question format)
+  const questions: PillQuestion[] = [];
+  const questionsRaw = parsed.questions;
+  if (Array.isArray(questionsRaw)) {
+    for (const q of questionsRaw) {
+      if (q && typeof q === 'object') {
+        const pq = parseOneQuestion(q as Record<string, unknown>);
+        if (pq) questions.push(pq);
+      }
+    }
+  }
 
-  const answerPillsRaw =
-    parsed.answerPills ??
-    parsed.answer_pills ??
-    parsed.options ??
-    parsed.answerOptions ??
-    parsed.answer_options;
-  const answerPills = toStringArray(answerPillsRaw).slice(0, 4);
-
-  const correctIndexRaw = parsed.correctIndex ?? parsed.correct_index;
-  const correctIndex = typeof correctIndexRaw === 'number'
-    ? correctIndexRaw
-    : Number.isFinite(Number(correctIndexRaw)) ? Number(correctIndexRaw) : -1;
-
-  const explanation = typeof parsed.explanation === 'string' ? parsed.explanation : '';
+  // Fallback: old single-question format
+  if (questions.length === 0) {
+    const single = parseOneQuestion(parsed);
+    if (single) questions.push(single);
+  }
 
   const followupRaw =
     parsed.followupPills ??
@@ -75,26 +108,20 @@ function parsePillsPayload(raw: string): PillsResult {
     parsed.starters;
   const followupPills = toStringArray(followupRaw);
 
-  return {
-    question,
-    answerPills,
-    correctIndex: correctIndex >= 0 && correctIndex < answerPills.length ? correctIndex : -1,
-    explanation,
-    followupPills,
-  };
+  return { questions, followupPills };
 }
 
 export async function generateResponsePills(
   aiResponse: string,
   topicName: string,
   levelLabel: string,
-): Promise<{ question: string; answerPills: string[]; correctIndex: number; explanation: string; followupPills: string[] }> {
+): Promise<PillsResult> {
   const prompt = buildPillsPrompt(aiResponse, topicName, levelLabel);
 
   const raw = await chatCompletion([
     { role: 'system', content: prompt },
-    { role: 'user', content: 'Generate the question, answer pills, and followup pills.' },
-  ], { temperature: 0.4, maxTokens: 500 });
+    { role: 'user', content: 'Generate the comprehension questions, answer pills, and followup pills.' },
+  ], { temperature: 0.4, maxTokens: 1500 });
 
   return parsePillsPayload(raw);
 }

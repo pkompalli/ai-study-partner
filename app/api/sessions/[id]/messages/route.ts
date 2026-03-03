@@ -95,10 +95,7 @@ export async function GET(
       if (!lastAssistant) {
         return NextResponse.json({
           sourceMessageId: null,
-          question: '',
-          answerPills: [],
-          correctIndex: -1,
-          explanation: '',
+          questions: [],
           followupPills: [],
         })
       }
@@ -138,6 +135,17 @@ export async function GET(
         : (topicId ? await getCachedSummary(user.id, topicId, depth) : null))
 
       if (cached) {
+        // Reconstruct questions array from cache
+        let cachedQuestions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }> = []
+        try {
+          const parsed = JSON.parse(cached.question)
+          if (Array.isArray(parsed)) cachedQuestions = parsed
+        } catch {
+          if (cached.question) {
+            cachedQuestions = [{ question: cached.question, answerPills: cached.answer_pills, correctIndex: cached.correct_index, explanation: cached.explanation }]
+          }
+        }
+
         const stream = new ReadableStream({
           start(controller) {
             const encoder = new TextEncoder()
@@ -145,10 +153,7 @@ export async function GET(
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'done',
               depth,
-              question: cached.question,
-              answerPills: cached.answer_pills,
-              correctIndex: cached.correct_index,
-              explanation: cached.explanation,
+              questions: cachedQuestions,
               starters: cached.starters,
             })}\n\n`))
             controller.close()
@@ -190,20 +195,18 @@ export async function GET(
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'done',
               depth,
-              question: finalResult.question,
-              answerPills: finalResult.answerPills,
-              correctIndex: finalResult.correctIndex,
-              explanation: finalResult.explanation,
+              questions: finalResult.questions,
               starters: finalResult.starters,
             })}\n\n`))
 
-            // Persist to cache
+            // Persist to cache — store questions array as JSON in the question column
+            const firstQ = finalResult.questions[0]
             const cacheData = {
               summary: finalResult.summary,
-              question: finalResult.question,
-              answer_pills: finalResult.answerPills,
-              correct_index: finalResult.correctIndex,
-              explanation: finalResult.explanation,
+              question: JSON.stringify(finalResult.questions),
+              answer_pills: firstQ?.answerPills ?? [],
+              correct_index: firstQ?.correctIndex ?? -1,
+              explanation: firstQ?.explanation ?? '',
               starters: finalResult.starters,
             }
             if (chapterId) {

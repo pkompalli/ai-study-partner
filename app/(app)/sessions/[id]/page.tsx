@@ -498,18 +498,29 @@ export default function SessionPage() {
   >([]);
   const [mcqHistoryIndex, setMcqHistoryIndex] = useState(0);
   const [mcqSelections, setMcqSelections] = useState<Record<number, number>>({});
-  const [savedMcqIndices, setSavedMcqIndices] = useState<Set<number>>(new Set());
-
   // Flashcard panel
   const [reviewMode, setReviewMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const resetMcqState = () => {
+    setMcqHistory([]);
+    setMcqHistoryIndex(0);
+    setMcqSelections({});
+    lastMcqFingerprintRef.current = '';
+  };
+
+  // Reset MCQ state when switching sessions (topics)
+  useEffect(() => {
+    resetMcqState();
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
 
     loadSession(id).then(async () => {
+      if (cancelled) return;
       const session = useSessionStore.getState().activeSession;
       if (session?.course_id) {
         fetchCourse(session.course_id).catch(() => {});
@@ -529,20 +540,23 @@ export default function SessionPage() {
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
-  // MCQ derived values
-  const mcqQuestion = responsePills?.answerPills?.length
-    ? responsePills.question
-    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.question ?? '') : '');
-  const mcqPills = responsePills?.answerPills?.length
-    ? responsePills.answerPills
-    : (!summaryStreaming && visibleMessages.length === 0 ? (topicSummary?.answerPills ?? []) : []);
-  const mcqCorrectIndex = responsePills?.answerPills?.length
-    ? responsePills.correctIndex
-    : (topicSummary?.correctIndex ?? -1);
-  const mcqExplanation = responsePills?.answerPills?.length
-    ? responsePills.explanation
-    : (topicSummary?.explanation ?? '');
+  // Gate: only derive MCQ questions when the store's session matches the current URL.
+  // This prevents stale questions from a previous topic leaking during the first render.
+  const sessionReady = activeSession?.id === id;
+
+  // MCQ derived values — build array of questions from responsePills or topicSummary
+  const mcqQuestions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }> =
+    !sessionReady ? []
+    : responsePills?.questions?.length
+      ? responsePills.questions
+      : (!summaryStreaming && visibleMessages.length === 0 && topicSummary?.questions?.length
+          ? topicSummary.questions
+          : []);
   const mcqSourceMessageId = responsePills?.sourceMessageId ?? null;
+
+  // Stable fingerprint so the effect only fires when actual question content changes
+  const mcqFingerprint = mcqQuestions.map(q => q.question).join('\n');
+  const lastMcqFingerprintRef = useRef<string>('');
 
   // Scroll to bottom on new messages or streaming
   useEffect(() => {
@@ -551,22 +565,26 @@ export default function SessionPage() {
     }
   }, [visibleMessages.length, streamingContent]);
 
-  // Accumulate MCQ history — new question → push + jump to end
+  // Accumulate MCQ history — new questions → append batch, show first new question
   useEffect(() => {
-    if (!mcqQuestion || !mcqPills.length) return;
+    if (!mcqFingerprint || mcqFingerprint === lastMcqFingerprintRef.current) return;
+    lastMcqFingerprintRef.current = mcqFingerprint;
+
+    let firstNewIndex = 0;
     setMcqHistory(prev => {
-      const last = prev[prev.length - 1];
-      if (mcqSourceMessageId && last?.sourceMessageId === mcqSourceMessageId) return prev;
-      if (!mcqSourceMessageId && last?.question === mcqQuestion) return prev;
-      const next = [...prev, {
+      // Deduplicate: check if this batch was already added (same sourceMessageId or same first question)
+      const firstQ = mcqQuestions[0].question;
+      if (mcqSourceMessageId && prev.some(h => h.sourceMessageId === mcqSourceMessageId)) return prev;
+      if (!mcqSourceMessageId && prev.some(h => h.question === firstQ)) return prev;
+      firstNewIndex = prev.length;
+      return [...prev, ...mcqQuestions.map(q => ({
         sourceMessageId: mcqSourceMessageId,
-        question: mcqQuestion, answerPills: mcqPills,
-        correctIndex: mcqCorrectIndex, explanation: mcqExplanation,
-      }];
-      setMcqHistoryIndex(next.length - 1);
-      return next;
+        question: q.question, answerPills: q.answerPills,
+        correctIndex: q.correctIndex, explanation: q.explanation,
+      }))];
     });
-  }, [mcqQuestion, mcqPills, mcqCorrectIndex, mcqExplanation, mcqSourceMessageId]);
+    setMcqHistoryIndex(firstNewIndex); // Show 1st new question, not last
+  }, [mcqFingerprint, mcqSourceMessageId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentMcq = mcqHistory[mcqHistoryIndex] ?? null;
 
@@ -603,11 +621,13 @@ export default function SessionPage() {
   const handleSummaryDepthChange = (newDepth: number) => {
     if (!id) return;
     const clamped = Math.max(1, Math.min(5, newDepth));
+    resetMcqState();
     fetchSummary(id, clamped);
   };
 
   const handleSummaryRefresh = () => {
     if (!id) return;
+    resetMcqState();
     fetchSummary(id, summaryDepth, true); // force=true bypasses server cache
   };
 
@@ -619,12 +639,24 @@ export default function SessionPage() {
     }
   };
 
+  const [savingCardIndex, setSavingCardIndex] = useState<number | null>(null);
+
+  // Check if a question has already been saved as a flashcard by matching front text
+  const isCardAlreadySaved = (question: string) => {
+    const cards = activeFlashcards?.cards ?? [];
+    return cards.some(c => c.front === question);
+  };
+
   const handleSaveCard = async (historyIndex: number) => {
     const mcq = mcqHistory[historyIndex];
     if (!mcq) return;
-    const correctAnswer = mcq.answerPills[mcq.correctIndex];
-    const saved = await saveCardFromQuestion(mcq.question, correctAnswer, mcq.explanation);
-    if (saved) setSavedMcqIndices(prev => new Set(prev).add(historyIndex));
+    setSavingCardIndex(historyIndex);
+    try {
+      const correctAnswer = mcq.answerPills[mcq.correctIndex];
+      await saveCardFromQuestion(mcq.question, correctAnswer, mcq.explanation);
+    } finally {
+      setSavingCardIndex(null);
+    }
   };
 
   const handleBackToCourse = () => {
@@ -861,9 +893,13 @@ export default function SessionPage() {
                         {currentMcq.explanation && (
                           <p className="text-xs text-gray-600 leading-snug">{currentMcq.explanation}</p>
                         )}
-                        {savedMcqIndices.has(mcqHistoryIndex) ? (
+                        {isCardAlreadySaved(currentMcq.question) ? (
                           <span className="inline-flex items-center gap-1 text-xs text-green-600 font-medium">
                             <Check className="h-3 w-3" /> Saved to deck
+                          </span>
+                        ) : savingCardIndex === mcqHistoryIndex ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-gray-400 font-medium">
+                            <Spinner className="h-3 w-3" /> Saving...
                           </span>
                         ) : (
                           <button

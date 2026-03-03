@@ -35,6 +35,41 @@ export async function getSessionById(id: string, userId: string) {
   return data
 }
 
+export async function findActiveSession(
+  userId: string,
+  courseId: string,
+  topicId?: string,
+  chapterId?: string,
+) {
+  const supabase = await createServiceClient()
+  let query = supabase
+    .from('study_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('course_id', courseId)
+    .eq('status', 'active')
+
+  if (topicId) {
+    query = query.eq('topic_id', topicId)
+  } else {
+    query = query.is('topic_id', null)
+  }
+
+  if (chapterId) {
+    query = query.eq('chapter_id', chapterId)
+  } else {
+    query = query.is('chapter_id', null)
+  }
+
+  const { data, error } = await query
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
 export async function createSession(
   userId: string,
   input: {
