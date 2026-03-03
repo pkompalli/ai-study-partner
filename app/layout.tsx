@@ -12,8 +12,12 @@ const outfit = Outfit({
 })
 
 export const metadata: Metadata = {
-  title: 'AI Study Partner',
-  description: 'AI-powered study partner with spaced repetition',
+  title: 'StudyMate by OnCourse',
+  description: 'AI-powered study companion by OnCourse',
+  icons: {
+    icon: '/oncourse-icon.png',
+    apple: '/oncourse-icon.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

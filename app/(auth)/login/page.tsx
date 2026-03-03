@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen } from 'lucide-react'
+import Image from 'next/image'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -35,11 +35,8 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="flex items-center justify-center gap-2.5 mb-8">
-          <div className="h-9 w-9 rounded-xl bg-primary-600 flex items-center justify-center">
-            <BookOpen className="h-5 w-5 text-white" />
-          </div>
-          <span className="text-xl font-bold text-gray-900">Study Partner</span>
+        <div className="flex justify-center mb-8">
+          <Image src="/oncourse-logo.png" alt="OnCourse" width={180} height={40} className="h-10 w-auto" />
         </div>
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
           <h1 className="text-2xl font-bold text-gray-900 mb-1">Welcome back</h1>

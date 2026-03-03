@@ -1,6 +1,7 @@
 'use client'
-import { BookOpen, Brain, FileText, Youtube } from 'lucide-react'
+import { Brain, FileText, Youtube, BookOpen } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 const features = [
   { icon: <Brain className="h-6 w-6 text-primary-500" />, title: 'AI Tutor', desc: 'Interactive sessions with a smart AI that adapts to your pace' },
@@ -13,11 +14,8 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-purple-50 flex flex-col">
       {/* Header */}
-      <header className="px-6 py-4 flex items-center gap-2">
-        <div className="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center">
-          <BookOpen className="h-4 w-4 text-white" />
-        </div>
-        <span className="font-bold text-gray-900">AI Study Partner</span>
+      <header className="px-6 py-4 flex items-center">
+        <Image src="/oncourse-logo.png" alt="OnCourse" width={160} height={36} className="h-9 w-auto" />
       </header>
 
       {/* Hero */}
@@ -25,7 +23,7 @@ export default function LandingPage() {
         <div className="max-w-md w-full space-y-6">
           <div className="space-y-3">
             <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-tight">
-              Learn smarter with your AI study partner
+              Learn smarter with StudyMate
             </h1>
             <p className="text-gray-600 text-lg">
               Upload any course content and get an AI tutor, quizzes, flashcards, and curated videos — all in one place.

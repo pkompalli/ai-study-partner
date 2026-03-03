@@ -1,5 +1,6 @@
 'use client'
-import { Menu, BookOpen } from 'lucide-react';
+import { Menu } from 'lucide-react';
+import Image from 'next/image';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 
@@ -18,8 +19,8 @@ export function TopBar() {
       </button>
 
       <div className="flex items-center gap-2 flex-1">
-        <BookOpen className="h-5 w-5 text-primary-600" />
-        <span className="font-semibold text-gray-900 text-sm">AI Study Partner</span>
+        <Image src="/oncourse-icon.png" alt="OnCourse" width={24} height={24} className="rounded" />
+        <span className="font-semibold text-gray-900 text-sm">StudyMate</span>
       </div>
 
       <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-sm font-medium">

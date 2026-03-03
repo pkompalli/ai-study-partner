@@ -572,23 +572,56 @@ function CourseSection({ course }: { course: Course }) {
         <div className="px-5 pb-5 space-y-3 border-t border-gray-100">
 
           {/* Course structure */}
-          {showStructureEditor ? (
-            <div className="pt-3">
+          <div className="pt-3">
+            {showStructureEditor ? (
               <CourseStructureEditor
                 course={course}
                 onSave={() => setShowStructureEditor(false)}
                 onCancel={() => setShowStructureEditor(false)}
               />
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowStructureEditor(true)}
-              className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 hover:text-primary-600 transition-colors"
-            >
-              <Edit3 className="h-3 w-3" />
-              Edit subjects &amp; topics
-            </button>
-          )}
+            ) : (
+              <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Subjects &amp; Topics</p>
+                  <button
+                    onClick={() => setShowStructureEditor(true)}
+                    className="p-1.5 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {course.subjects && course.subjects.length > 0 ? (
+                  <div className="px-4 py-3 space-y-2">
+                    {course.subjects.map(subject => (
+                      <div key={subject.id}>
+                        <p className="text-sm font-semibold text-gray-800">{subject.name}</p>
+                        {subject.topics.length > 0 && (
+                          <div className="ml-3 mt-1 space-y-0.5">
+                            {subject.topics.map(topic => (
+                              <p key={topic.id} className="text-xs text-gray-500 flex items-center gap-1.5">
+                                <span className="text-gray-300">•</span>
+                                {topic.name}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-4 text-center">
+                    <p className="text-xs text-gray-400">No subjects or topics yet.</p>
+                    <button
+                      onClick={() => setShowStructureEditor(true)}
+                      className="mt-1.5 text-xs text-primary-600 hover:text-primary-700 font-medium"
+                    >
+                      Add structure
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {loadingFormats ? (
             <div className="flex justify-center py-4"><Spinner className="h-5 w-5" /></div>

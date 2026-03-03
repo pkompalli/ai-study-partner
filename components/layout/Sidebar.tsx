@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, LogOut, BookOpen, ChevronDown, ChevronRight, GraduationCap, Settings, LayoutDashboard } from 'lucide-react';
+import Image from 'next/image';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { useCourseStore } from '@/store/courseStore';
@@ -52,10 +53,8 @@ export function Sidebar() {
     >
       {/* Logo — click goes to Dashboard */}
       <Link href="/dashboard" onClick={closeMobile} className="p-4 border-b border-primary-800/50 flex items-center gap-2 flex-shrink-0 hover:bg-primary-900 transition-colors">
-        <div className="h-8 w-8 rounded-lg bg-primary-600 flex items-center justify-center flex-shrink-0">
-          <BookOpen className="h-4 w-4 text-white" />
-        </div>
-        <span className="font-bold text-white">Study Partner</span>
+        <Image src="/oncourse-icon.png" alt="OnCourse" width={32} height={32} className="rounded-lg flex-shrink-0" />
+        <span className="font-bold text-white">StudyMate</span>
       </Link>
 
       {/* Courses section — scrollable */}
