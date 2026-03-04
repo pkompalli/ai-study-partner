@@ -41,7 +41,7 @@ interface SessionState {
   endSession: () => Promise<string>;
   clearSession: () => void;
   fetchSummary: (sessionId: string, depth?: number, force?: boolean) => Promise<void>;
-  fetchPills: (sessionId: string) => Promise<void>;
+  fetchPills: (sessionId: string, depth?: number) => Promise<void>;
   fetchTopicBank: (sessionId: string) => Promise<void>;
   saveCardFromQuestion: (question: string, answer: string, explanation: string) => Promise<Flashcard | null>;
   reviewCard: (cardId: string, correct: boolean) => Promise<void>;
@@ -157,7 +157,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
 
     set({ isStreaming: false });
-    get().fetchPills(session.id).finally(() => set({ pillsLoading: false }));
+    get().fetchPills(session.id, depth ?? get().summaryDepth).finally(() => set({ pillsLoading: false }));
   },
 
   requestQuiz: async () => {
@@ -305,13 +305,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ summaryStreaming: false });
   },
 
-  fetchPills: async (sessionId) => {
+  fetchPills: async (sessionId, depth) => {
     try {
+      const url = depth ? `/api/sessions/${sessionId}/pills?depth=${depth}` : `/api/sessions/${sessionId}/pills`;
       const { data } = await api.get<{
         sourceMessageId?: string | null;
         questions: Array<{ question: string; answerPills: string[]; correctIndex: number; explanation: string }>;
         followupPills: string[];
-      }>(`/api/sessions/${sessionId}/pills`);
+      }>(url);
 
       const questions = (data.questions ?? []).filter(
         q => q.question?.trim().length > 0 && q.answerPills?.length >= 2
@@ -473,6 +474,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
 
     set({ isStreaming: false, regeneratingIndex: null });
-    get().fetchPills(session.id).finally(() => set({ pillsLoading: false }));
+    get().fetchPills(session.id, depth).finally(() => set({ pillsLoading: false }));
   },
 }));

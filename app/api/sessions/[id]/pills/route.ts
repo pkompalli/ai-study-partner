@@ -50,7 +50,10 @@ export async function GET(
 
     const aiContent = typeof lastAI.content === 'string' ? lastAI.content : ''
 
-    const result = await generateResponsePills(aiContent, topicName, level.label)
+    const depthParam = _req.nextUrl.searchParams.get('depth')
+    const depth = depthParam ? Math.min(Math.max(Number(depthParam), 1), 5) : undefined
+
+    const result = await generateResponsePills(aiContent, topicName, level.label, depth)
 
     return NextResponse.json({ sourceMessageId: lastAI.id ?? null, ...result })
   } catch (err: unknown) {

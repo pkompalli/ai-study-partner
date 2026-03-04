@@ -486,7 +486,7 @@ export default function SessionPage() {
     fetchSessionHint, clearSessionHint,
   } = useExamStore();
 
-  const [loading, setLoading] = useState(true);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [centerTab, setCenterTab] = useState<'study' | 'exam'>('study');
   // Panel toggle
@@ -519,19 +519,26 @@ export default function SessionPage() {
     if (!id) return;
     let cancelled = false;
 
-    loadSession(id).then(async () => {
+    // Run loadSession and fetchSummary in parallel — fetchSummary only needs
+    // the session ID (from URL), not the session object.
+    const sessionPromise = loadSession(id).then(() => {
       if (cancelled) return;
       const session = useSessionStore.getState().activeSession;
       if (session?.course_id) {
         fetchCourse(session.course_id).catch(() => {});
-        // Always fetch formats eagerly so the exam tab is ready immediately
         fetchFormats(session.course_id).catch(() => {});
         router.prefetch(`/courses/${session.course_id}`);
       }
-      fetchSummary(id, 0);
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
     });
+
+    const summaryPromise = fetchSummary(id, 0);
+
+    // Mark session as loaded once loadSession resolves (don't wait for summary)
+    sessionPromise.finally(() => {
+      if (!cancelled) setSessionLoaded(true);
+    });
+
+    // summaryPromise runs in parallel; its result flows through summaryStreaming/topicSummary state
 
     return () => {
       cancelled = true;
@@ -596,7 +603,7 @@ export default function SessionPage() {
 
   const handleSend = async (content: string) => {
     try {
-      await sendMessage(content);
+      await sendMessage(content, summaryDepth);
     } catch {
       addToast('Failed to send message', 'error');
     }
@@ -672,13 +679,7 @@ export default function SessionPage() {
     router.push('/dashboard');
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Spinner className="h-8 w-8" />
-      </div>
-    );
-  }
+  const headerReady = activeSession?.id === id && sessionLoaded;
 
   const hasSummary = topicSummary !== null || summaryStreaming;
 
@@ -695,12 +696,21 @@ export default function SessionPage() {
           <ArrowLeft className="h-4 w-4 text-gray-600" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">
-            {activeSession?.title ?? 'Study Session'}
-          </p>
-          <p className="text-xs text-gray-400">
-            {activeSession?.status === 'active' ? 'Active session' : 'Session ended'}
-          </p>
+          {headerReady ? (
+            <>
+              <p className="text-sm font-semibold text-gray-900 truncate">
+                {activeSession?.title ?? 'Study Session'}
+              </p>
+              <p className="text-xs text-gray-400">
+                {activeSession?.status === 'active' ? 'Active session' : 'Session ended'}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="h-4 w-48 bg-gray-200 rounded animate-pulse mb-1" />
+              <div className="h-3 w-24 bg-gray-100 rounded animate-pulse" />
+            </>
+          )}
         </div>
         <button
           onClick={() => router.push('/settings')}
@@ -754,8 +764,13 @@ export default function SessionPage() {
                     />
                   )}
                   {!hasSummary && visibleMessages.length === 0 && (
-                    <div className="flex items-center justify-center py-16">
-                      <Spinner className="h-6 w-6 text-primary-400" />
+                    <div className="py-6 space-y-4">
+                      <div className="h-5 w-3/4 bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-full bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 w-5/6 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 w-2/3 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 w-4/5 bg-gray-100 rounded animate-pulse" />
+                      <div className="h-4 w-1/2 bg-gray-100 rounded animate-pulse" />
                     </div>
                   )}
                   {(visibleMessages.length > 0 || (isStreaming && regeneratingIndex === null)) && (
@@ -914,10 +929,16 @@ export default function SessionPage() {
                   </>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-2">
-                    {pillsLoading || summaryStreaming
-                      ? <Spinner className="h-5 w-5 text-orange-300" />
-                      : <p className="text-xs text-gray-400 text-center leading-relaxed">Questions appear here<br/>as you study.</p>
-                    }
+                    {pillsLoading || summaryStreaming ? (
+                      <div className="w-full space-y-3 px-1">
+                        <div className="h-4 w-5/6 bg-orange-100 rounded animate-pulse" />
+                        <div className="h-8 w-full bg-orange-50 rounded-lg animate-pulse" />
+                        <div className="h-8 w-full bg-orange-50 rounded-lg animate-pulse" />
+                        <div className="h-8 w-full bg-orange-50 rounded-lg animate-pulse" />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center leading-relaxed">Questions appear here<br/>as you study.</p>
+                    )}
                   </div>
                 )}
               </div>

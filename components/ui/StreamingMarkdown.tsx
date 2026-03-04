@@ -43,7 +43,7 @@ function preprocessLatex(content: string): string {
 // Allow single-$ inline math because the tutor prompts intentionally use $...$.
 const PLUGINS = { math: createMathPlugin({ singleDollarTextMath: true }) }
 
-function makeComponents(invert?: boolean): Components {
+function makeComponents(invert?: boolean, isStreaming?: boolean): Components {
   return {
     code(props) {
       const { className, children } = props
@@ -61,6 +61,9 @@ function makeComponents(invert?: boolean): Components {
       const raw = String(children).trim()
 
       if (lang === 'mermaid') {
+        if (isStreaming) {
+          return <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse my-4" />
+        }
         return <InlineMermaid code={raw} />
       }
 
@@ -106,7 +109,7 @@ interface Props {
  * workaround. The `caret` prop shows a blinking cursor while streaming.
  */
 export function StreamingMarkdown({ content, isStreaming, invert, className }: Props) {
-  const components = useMemo(() => makeComponents(invert), [invert])
+  const components = useMemo(() => makeComponents(invert, isStreaming), [invert, isStreaming])
 
   return (
     <div className={cn('prose prose-sm max-w-none', invert && 'prose-invert', className)}>

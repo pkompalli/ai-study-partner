@@ -262,16 +262,29 @@ Requirements:
 - For all mathematical and chemical notation use LaTeX: inline math with $...$, display equations with $$...$$, and chemical formulas with \\ce{...}. Never write formulas as plain text.`;
 }
 
+const SUMMARY_INTERACTIVE_DEPTH_INSTRUCTIONS: Record<number, string> = {
+  1: 'Keep questions simple — test whether the student remembers the key points.',
+  2: 'Keep questions simple — test whether the student remembers the key points.',
+  3: 'Test genuine conceptual understanding — mechanism, causal reasoning.',
+  4: 'Probe deeper — edge cases, derivations, quantitative traps, subtle distinctions.',
+  5: 'Probe deeper — edge cases, derivations, quantitative traps, subtle distinctions.',
+};
+
 export function buildSummaryInteractivePrompt(
   topicName: string,
   chapterName: string | undefined,
   courseName: string,
   yearOfStudy: string | undefined,
   summaryContent?: string,
+  depth?: number,
 ): string {
   const level = inferAcademicLevel(yearOfStudy, courseName);
+  const d = Math.min(Math.max(depth ?? 3, 1), 5);
   const contentLen = (summaryContent ?? '').trim().length;
-  const qCount = contentLen < 300 ? 2 : contentLen < 800 ? 3 : contentLen < 1500 ? 4 : 5;
+  const baseCount = contentLen < 300 ? 2 : contentLen < 800 ? 3 : contentLen < 1500 ? 4 : 5;
+  const maxByDepth = d <= 2 ? 2 : d === 3 ? 4 : 5;
+  const qCount = Math.min(baseCount, maxByDepth);
+  const depthInstruction = SUMMARY_INTERACTIVE_DEPTH_INSTRUCTIONS[d];
 
   return `Generate interactive study elements for a ${level.label} student who just read a summary of "${topicName}"${chapterName ? ` > "${chapterName}"` : ''} in ${courseName}.
 
@@ -291,6 +304,7 @@ Return ONLY valid JSON — no markdown, no code fences:
 
 Requirements:
 - Generate exactly ${qCount} questions in the "questions" array. Each should help the student check whether they truly understood what they just read.
+- Question difficulty: ${depthInstruction}
 - Each question should cover a DIFFERENT key concept or aspect from the summary. Do not repeat the same idea.
 - Each question should demand genuine conceptual understanding — test mechanism, consequence, causal reasoning, or the ability to distinguish between closely related ideas. Avoid surface-recall ("what is X defined as?"). Push the student to think, not just remember.
 - answerPills: exactly 4 short answer options per question, 2-6 words each — ONE correct, THREE distractors that are plausible to a student who partially understands (common misconceptions, subtly wrong quantities, reversed causality). RANDOMIZE the position of the correct answer.
@@ -300,10 +314,22 @@ Requirements:
 - Calibrate depth and language to a ${level.label} student — questions should be appropriately challenging for that level, not trivial`;
 }
 
-export function buildPillsPrompt(aiResponse: string, topicName: string, levelLabel: string): string {
-  // Decide question count based on content length
+const PILLS_DEPTH_INSTRUCTIONS: Record<number, string> = {
+  1: 'Ask straightforward recall and basic comprehension questions.',
+  2: 'Ask straightforward recall and basic comprehension questions.',
+  3: 'Ask questions testing mechanism, consequence, and causal reasoning.',
+  4: 'Ask rigorous questions probing edge cases, derivations, quantitative reasoning, or subtle distinctions.',
+  5: 'Ask rigorous questions probing edge cases, derivations, quantitative reasoning, or subtle distinctions.',
+};
+
+export function buildPillsPrompt(aiResponse: string, topicName: string, levelLabel: string, depth?: number): string {
+  const d = Math.min(Math.max(depth ?? 3, 1), 5);
+  // Decide question count based on content length AND depth
   const contentLen = aiResponse.trim().length;
-  const qCount = contentLen < 300 ? 2 : contentLen < 800 ? 3 : contentLen < 1500 ? 4 : 5;
+  const baseCount = contentLen < 300 ? 2 : contentLen < 800 ? 3 : contentLen < 1500 ? 4 : 5;
+  const maxByDepth = d <= 2 ? 2 : d === 3 ? 4 : 5;
+  const qCount = Math.min(baseCount, maxByDepth);
+  const depthInstruction = PILLS_DEPTH_INSTRUCTIONS[d];
 
   return `You are analyzing a tutoring conversation about "${topicName}" with a ${levelLabel} student.
 
@@ -331,6 +357,7 @@ Return ONLY valid JSON — no markdown, no code fences:
 
 Guidelines:
 - Generate exactly ${qCount} questions in the "questions" array.
+- Question difficulty: ${depthInstruction}
 - Each question should help the student check their own understanding of what they just read — "Did I actually get this?" Test whether the student grasped the mechanism, consequence, causal reasoning, or can distinguish between closely related ideas. Avoid surface-recall ("what is X defined as?"). Push the student to think, not just remember.
 - Each question should cover a DIFFERENT key concept or aspect from the content. Do not repeat the same idea.
 - answerPills: exactly 4 short answer options per question, 2-6 words each — ONE correct, THREE distractors that are plausible to a student who partially understands (common misconceptions, subtly wrong quantities, reversed causality). RANDOMIZE the position of the correct answer.

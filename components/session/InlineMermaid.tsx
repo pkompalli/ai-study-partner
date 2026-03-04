@@ -1,5 +1,38 @@
 'use client'
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+
+// ── Validate sanitised mermaid code before rendering ────────────────────────
+function isValidMermaidCode(code: string): boolean {
+  const trimmed = code.trim();
+  // Must start with a declaration line
+  if (!/^(flowchart|graph)\s/im.test(trimmed)) return false;
+  // Must contain at least one node definition (e.g. A[...], B{...}, C(...))
+  if (!/\w+\s*[\[({]/.test(trimmed)) return false;
+  // Braces / brackets must be roughly balanced
+  const opens = (trimmed.match(/[\[({]/g) || []).length;
+  const closes = (trimmed.match(/[\])}]/g) || []).length;
+  if (Math.abs(opens - closes) > 2) return false;
+  return true;
+}
+
+// ── Extract natural SVG dimensions ──────────────────────────────────────────
+function getSvgDimensions(svg: string): { width: number; height: number } | null {
+  // Try viewBox first: "minX minY width height"
+  const vb = svg.match(/viewBox\s*=\s*"([^"]+)"/);
+  if (vb) {
+    const parts = vb[1].trim().split(/\s+/).map(Number);
+    if (parts.length === 4 && parts.every(n => !isNaN(n))) {
+      return { width: parts[2], height: parts[3] };
+    }
+  }
+  // Fall back to explicit width/height attributes
+  const w = svg.match(/<svg[^>]*\bwidth\s*=\s*"([\d.]+)"/);
+  const h = svg.match(/<svg[^>]*\bheight\s*=\s*"([\d.]+)"/);
+  if (w && h) {
+    return { width: parseFloat(w[1]), height: parseFloat(h[1]) };
+  }
+  return null;
+}
 
 // ── Semantic colour palette ───────────────────────────────────────────────────
 const SEMANTIC: Record<string, string> = {
@@ -24,8 +57,10 @@ function sanitiseMermaidCode(code: string): string {
     .replace(/\$([^$\n]+)\$/g, '$1')
     // Unwrap \ce{...} — keep inner text
     .replace(/\\ce\{([^}]*)\}/g, '$1')
-    // Unwrap other \cmd{content} — keep content
-    .replace(/\\[A-Za-z]+\{([^}]*)\}/g, '$1')
+    // Unwrap \cmd{a}{b}... — join all brace-group contents with spaces
+    .replace(/\\[A-Za-z]+(?:\{[^}]*\})+/g, m =>
+      [...m.matchAll(/\{([^}]*)\}/g)].map(g => g[1]).join(' ')
+    )
     // Remove bare \commands (\Delta, \alpha, \frac, etc.)
     .replace(/\\[A-Za-z]+/g, '')
     // Remove any stray $ remaining
@@ -126,9 +161,19 @@ function getMermaid() {
 }
 
 // Mermaid v11 sometimes resolves (not rejects) with a "Syntax error" SVG.
+// Also detect partial renders that technically succeed but show broken diagrams.
 function isMermaidErrorSvg(svg: string) {
   const l = svg.toLowerCase();
-  return l.includes('syntax error') || l.includes('parse error') || l.includes('mermaid version');
+  if (l.includes('syntax error') || l.includes('parse error') || l.includes('mermaid version')) {
+    return true;
+  }
+  // Too few <g> groups means almost nothing rendered (partial arrow, etc.)
+  const gCount = (svg.match(/<g\b/g) || []).length;
+  if (gCount < 2) return true;
+  // Suspiciously small viewBox — a real diagram is wider/taller than 50px
+  const vb = svg.match(/viewBox\s*=\s*"[\d.\s-]*\s([\d.]+)\s([\d.]+)"/);
+  if (vb && (parseFloat(vb[1]) < 50 || parseFloat(vb[2]) < 50)) return true;
+  return false;
 }
 
 // ── Safe render helper ────────────────────────────────────────────────────────
@@ -163,17 +208,27 @@ const ZOOM_MAX = 2.5;
 export function InlineMermaid({ code }: { code: string }) {
   const uid = useId().replace(/:/g, '');
   const id  = `mermaid-${uid}`;
+  const containerRef = useRef<HTMLDivElement>(null);
   const [svg,   setSvg]   = useState<string>('');
   const [error, setError] = useState(false);
   const [zoom,  setZoom]  = useState(1);
+  const [baseZoom, setBaseZoom] = useState(1);
+  const [svgDims, setSvgDims] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setError(false);
     setSvg('');
     setZoom(1);
+    setBaseZoom(1);
+    setSvgDims(null);
 
     const clean = sanitiseMermaidCode(code);
+
+    if (!isValidMermaidCode(clean)) {
+      setError(true);
+      return;
+    }
 
     getMermaid().then(async m => {
       // Attempt 1: with semantic colour classes
@@ -181,7 +236,23 @@ export function InlineMermaid({ code }: { code: string }) {
       // Attempt 2: plain sanitised code (no classDef injection)
       if (!result) result = await safeRender(m, id, clean);
       if (!cancelled) {
-        if (result) setSvg(result);
+        if (result) {
+          // Compute fit-to-frame scale from SVG natural size vs container
+          const dims = getSvgDimensions(result);
+          const containerWidth = containerRef.current?.clientWidth ?? 0;
+          if (dims) {
+            setSvgDims(dims);
+            if (containerWidth > 0) {
+              const maxH = window.innerHeight * 0.6;
+              const fitX = containerWidth / dims.width;
+              const fitY = dims.height > maxH ? maxH / dims.height : 1;
+              const fit = Math.max(Math.min(fitX, fitY, 1), ZOOM_MIN);
+              setBaseZoom(fit);
+              setZoom(fit);
+            }
+          }
+          setSvg(result);
+        }
         else setError(true);
       }
     }).catch(() => { if (!cancelled) setError(true); });
@@ -191,28 +262,32 @@ export function InlineMermaid({ code }: { code: string }) {
 
   const zoomIn  = useCallback(() => setZoom(z => Math.min(z + ZOOM_STEP, ZOOM_MAX)), []);
   const zoomOut = useCallback(() => setZoom(z => Math.max(z - ZOOM_STEP, ZOOM_MIN)), []);
-  const zoomReset = useCallback(() => setZoom(1), []);
+  const zoomReset = useCallback(() => setZoom(baseZoom), [baseZoom]);
 
   // Silently suppress failed diagrams — showing an error inside lesson content
   // is more disruptive than simply omitting the visual.
   if (error) return null;
 
   if (!svg) {
-    return <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse my-4" />;
+    return (
+      <div ref={containerRef} className="not-prose my-4">
+        <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse" />
+      </div>
+    );
   }
 
-  // Inject white background into the SVG. Do NOT set width:100% — let SVG keep
-  // its natural dimensions so CSS zoom actually works.
+  // Inject white background into the SVG. Let SVG keep its natural dimensions —
+  // the wrapper div handles sizing via explicit width/height.
   const renderedSvg = svg.replace(
     /<svg\b/,
-    '<svg style="background:white;display:block;min-height:80px;max-width:100%"',
+    '<svg style="background:white;display:block"',
   );
 
   const zoomPct = Math.round(zoom * 100);
 
   return (
     // not-prose: escape Tailwind Typography so prose rules don't dark-style the SVG
-    <div className="not-prose my-4 rounded-2xl border border-slate-100 bg-white shadow-sm">
+    <div ref={containerRef} className="not-prose my-4 rounded-2xl border border-slate-100 bg-white shadow-sm">
       {/* Zoom toolbar */}
       <div className="flex items-center gap-1 px-3 py-1.5 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
         <button
@@ -243,12 +318,20 @@ export function InlineMermaid({ code }: { code: string }) {
           </svg>
         </button>
       </div>
-      {/* Diagram container — scrollable when zoomed in */}
+      {/* Diagram container — wrapper has explicit scaled dimensions so
+           transform:scale() doesn't leave whitespace in the layout */}
       <div className="overflow-auto max-h-[70vh]">
-        <div
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}
-          dangerouslySetInnerHTML={{ __html: renderedSvg }}
-        />
+        <div style={{
+          width: svgDims ? Math.ceil(svgDims.width * zoom) : undefined,
+          height: svgDims ? Math.ceil(svgDims.height * zoom) : undefined,
+          margin: '0 auto',
+          overflow: 'hidden',
+        }}>
+          <div
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
+            dangerouslySetInnerHTML={{ __html: renderedSvg }}
+          />
+        </div>
       </div>
     </div>
   );

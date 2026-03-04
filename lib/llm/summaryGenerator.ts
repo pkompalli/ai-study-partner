@@ -66,6 +66,7 @@ export async function* streamTopicSummaryGenerator(
       params.courseName,
       params.yearOfStudy,
       summaryAccumulated,
+      params.depth,
     );
     const raw = await chatCompletion([
       { role: 'system', content: interactivePrompt },
