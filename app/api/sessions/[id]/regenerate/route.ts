@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getSessionById, getSessionMessages, saveMessage } from '@/lib/db/sessions'
 import { getCourseContext } from '@/lib/db/courses'
-import { streamTutorResponseGenerator } from '@/lib/llm/tutor'
+import { streamStudyMateResponseGenerator } from '@/lib/llm/tutor'
 
 // POST /api/sessions/[id]/regenerate — regenerate the AI response at a given message index
 export async function POST(
@@ -53,7 +53,7 @@ export async function POST(
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const gen = streamTutorResponseGenerator(
+        const gen = streamStudyMateResponseGenerator(
           typeof prevUser.content === 'string' ? prevUser.content : '',
           historyUpTo,
           {

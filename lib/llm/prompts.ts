@@ -146,7 +146,7 @@ const DEPTH_RESPONSE_INSTRUCTIONS: Record<number, string> = {
   5: 'Write a comprehensive, textbook-quality response — full derivations, formal definitions, worked examples from first principles, discussion of assumptions and limitations, connections to adjacent topics. No length cap.',
 };
 
-export function buildTutorSystemPrompt(
+export function buildStudyMateSystemPrompt(
   courseName: string,
   topicName: string,
   chapterName?: string,
@@ -161,7 +161,7 @@ export function buildTutorSystemPrompt(
     : `The student is studying for ongoing classwork. Prioritise deep conceptual understanding and the ability to apply ideas.`;
   const depthInstruction = DEPTH_RESPONSE_INSTRUCTIONS[Math.min(Math.max(depth ?? 3, 1), 5)];
 
-  return `You are an expert, encouraging AI tutor helping a ${level.label} student study "${courseName}".
+  return `You are an expert, encouraging AI study mate helping a ${level.label} student study "${courseName}".
 Current focus: ${topicName}${chapterName ? ` > ${chapterName}` : ''}.
 
 ACADEMIC LEVEL CALIBRATION — this is critical:
@@ -192,7 +192,19 @@ flowchart TD
     B -->|No| D[Non-spontaneous]
 \`\`\`
 
-2. **Key term cards** — when introducing 3+ technical terms worth memorising:
+2. **Images** — when a real-world photograph, micrograph, anatomical diagram, or scientific illustration would genuinely help the student visualise a concept:
+\`\`\`image
+{"query":"mitochondria electron micrograph","alt":"Electron micrograph of a mitochondrion showing cristae"}
+\`\`\`
+Guidelines for images:
+- Use images for things that are hard to describe in words: biological structures, geological formations, experimental apparatus, astronomical objects, chemical crystal structures, anatomical features, etc.
+- The query should be specific and descriptive — aim for the exact kind of image you want (e.g. "cross section human heart anatomy" not just "heart")
+- The alt text should describe what the image shows for accessibility
+- Do NOT use images for abstract concepts that are better served by diagrams (use mermaid instead) or equations (use LaTeX instead)
+- Use at most one image per response
+- Keep JSON on a single line inside the block
+
+3. **Key term cards** — when introducing 3+ technical terms worth memorising:
 \`\`\`flashcards
 {"cards":[{"term":"Gibbs Free Energy","definition":"A thermodynamic potential (G = H − TS) that predicts spontaneity at constant T and P."},{"term":"Enthalpy (H)","definition":"Total heat content of a system; ΔH < 0 for exothermic reactions."}]}
 \`\`\`
@@ -200,10 +212,10 @@ flowchart TD
 Guidelines for multi-modal use:
 - Use mermaid whenever you'd otherwise describe a process sequentially in words — a diagram communicates it faster
 - Use flashcard blocks when a response introduces several new terms the student needs to retain
-- Do NOT include more than one type of block per response — pick the most valuable medium for that specific content
+- Do NOT include more than one type of block per response (except an image block, which may accompany a diagram or flashcard block) — pick the most valuable medium for that specific content
 - Keep JSON on a single line inside the block (no pretty-printing)
 - NEVER use ASCII art, text-art grids, or plain code blocks to represent diagrams or tables — use mermaid for diagrams and markdown tables (| col | col |) for tabular data
-- NEVER label diagram headings with "Mermaid Diagram:" — use only a plain descriptive title
+- NEVER prefix or label diagrams with qualifiers like "Mermaid Diagram:", "Diagram:", "Flowchart:", "Chart:" etc. — just use a plain descriptive heading (e.g. "Photosynthesis Process" not "Mermaid Diagram: Photosynthesis Process")
 - Mermaid node label rules (CRITICAL — violations break rendering):
   - NEVER put LaTeX, $...$, \\ce{}, subscripts or superscripts inside node labels
   - NEVER use parentheses ( ) inside a rectangular node label [ ] — they confuse the parser
@@ -242,7 +254,7 @@ export function buildSummaryProsePrompt(
     ? `The student is preparing for an exam${examName ? ` (${examName})` : ''}. Focus on the most testable concepts.`
     : 'The student is studying for ongoing classwork.';
 
-  return `You are an expert tutor writing an orientation summary for a ${level.label} student.
+  return `You are an expert study mate writing an orientation summary for a ${level.label} student.
 Topic: "${topicName}"${chapterName ? ` > "${chapterName}"` : ''}
 Course: "${courseName}"
 ${goalLine}
@@ -259,7 +271,12 @@ Requirements:
 - NEVER include callout boxes or any framing labelled "Exam Tip", "Study Tip", "Pro Tip", "Test-Taking Strategy", "Note:", "Important:", or similar. No advice about what question types appear on exams, no commentary about which solvents or scenarios are "most common in tests". Just rigorous direct content.
 - Write at high conceptual density. Every sentence should carry substantive meaning — mechanism, consequence, distinction, or application. Do not pad with motivation, context-setting about why the topic matters, or accessibility commentary.
 - NEVER use ASCII art, text-art grids, pseudo-diagrams with arrows (→, ←, ↔, ⇌), or plain code blocks to represent diagrams, processes, or relationships. These render as ugly monospaced text. Instead: use a proper \`\`\`mermaid code fence (with "flowchart TD" declaration, standard --> arrows, plain ASCII labels, 6–10 nodes max), OR use a markdown table, OR describe the relationship in prose. There is no other option.
-- For all mathematical and chemical notation use LaTeX: inline math with $...$, display equations with $$...$$, and chemical formulas with \\ce{...}. Never write formulas as plain text.`;
+- For all mathematical and chemical notation use LaTeX: inline math with $...$, display equations with $$...$$, and chemical formulas with \\ce{...}. Never write formulas as plain text.
+- When a real-world photograph, micrograph, or scientific illustration would help the student visualise a concept (biological structures, experimental apparatus, geological formations, etc.), include an image block:
+\`\`\`image
+{"query":"specific search query for the image","alt":"Accessible description of what the image shows"}
+\`\`\`
+Use at most 1-2 images in a summary. Do NOT use images for abstract concepts — use mermaid diagrams or LaTeX instead.`;
 }
 
 const SUMMARY_INTERACTIVE_DEPTH_INSTRUCTIONS: Record<number, string> = {
@@ -331,9 +348,9 @@ export function buildPillsPrompt(aiResponse: string, topicName: string, levelLab
   const qCount = Math.min(baseCount, maxByDepth);
   const depthInstruction = PILLS_DEPTH_INSTRUCTIONS[d];
 
-  return `You are analyzing a tutoring conversation about "${topicName}" with a ${levelLabel} student.
+  return `You are analyzing a study conversation about "${topicName}" with a ${levelLabel} student.
 
-The tutor just responded with:
+The study mate just responded with:
 ---
 ${aiResponse.slice(0, 2000)}
 ---

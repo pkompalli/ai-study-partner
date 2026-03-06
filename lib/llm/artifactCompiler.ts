@@ -15,7 +15,7 @@ interface ArtifactInput {
 export async function compileArtifact(input: ArtifactInput): Promise<string> {
   const transcript = input.messages
     .filter(m => m.role !== 'system')
-    .map(m => `**${m.role === 'user' ? 'Student' : 'Tutor'}**: ${m.content}`)
+    .map(m => `**${m.role === 'user' ? 'Student' : 'Study Mate'}**: ${m.content}`)
     .join('\n\n');
 
   const quizSection = input.quizQuestions

@@ -83,7 +83,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadSession: async (sessionId) => {
     const { data } = await api.get<StudySession & { messages: SessionMessage[] }>(`/api/sessions/${sessionId}`);
     const { messages, ...session } = data;
-    set({ activeSession: session, messages: messages ?? [], responsePills: null, topicSummary: null, summaryStreaming: false, summaryStreamingContent: '', activeFlashcards: null });
+    set({ activeSession: session, messages: messages ?? [], responsePills: null, topicSummary: null, summaryStreamingContent: '', activeFlashcards: null });
     // Load topic bank in the background — cards and questions appear immediately for returning students
     get().fetchTopicBank(sessionId).catch(() => {});
   },

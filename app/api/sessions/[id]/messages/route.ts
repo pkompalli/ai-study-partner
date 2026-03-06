@@ -23,7 +23,7 @@ import {
   getLastCachedChapterDepth,
 } from '@/lib/db/topicBank'
 import { getCourseContext } from '@/lib/db/courses'
-import { streamTutorResponseGenerator } from '@/lib/llm/tutor'
+import { streamStudyMateResponseGenerator } from '@/lib/llm/tutor'
 import { generateQuiz } from '@/lib/llm/quizGenerator'
 import { generateFlashcards } from '@/lib/llm/flashcardGenerator'
 import { streamTopicSummaryGenerator } from '@/lib/llm/summaryGenerator'
@@ -372,7 +372,7 @@ export async function POST(
       }
 
       const historyBeforeUser = visibleMessages.slice(0, messageIndex - 1)
-      const generator = streamTutorResponseGenerator(userMsg.content, historyBeforeUser, {
+      const generator = streamStudyMateResponseGenerator(userMsg.content, historyBeforeUser, {
         courseName: courseCtx?.name ?? 'Course',
         topicName,
         chapterName,
@@ -413,7 +413,7 @@ export async function POST(
     await saveMessage(id, 'user', content)
     const history = await getSessionMessages(id)
 
-    const generator = streamTutorResponseGenerator(content, history, {
+    const generator = streamStudyMateResponseGenerator(content, history, {
       courseName: courseCtx?.name ?? 'Course',
       topicName,
       chapterName,

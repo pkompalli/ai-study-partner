@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 
 const features = [
-  { icon: <Brain className="h-6 w-6 text-primary-500" />, title: 'AI Tutor', desc: 'Interactive sessions with a smart AI that adapts to your pace' },
+  { icon: <Brain className="h-6 w-6 text-primary-500" />, title: 'AI Study Mate', desc: 'Interactive sessions with a smart AI that adapts to your pace' },
   { icon: <FileText className="h-6 w-6 text-purple-500" />, title: 'Quizzes & Flashcards', desc: 'Auto-generated quizzes and spaced-repetition flashcards' },
   { icon: <Youtube className="h-6 w-6 text-red-500" />, title: 'Video Links', desc: 'Curated YouTube videos matched to your study topic' },
   { icon: <BookOpen className="h-6 w-6 text-green-500" />, title: 'Lesson Artifacts', desc: 'Export your sessions as polished PDF or Markdown documents' },
@@ -26,7 +26,7 @@ export default function LandingPage() {
               Learn smarter with StudyMate
             </h1>
             <p className="text-gray-600 text-lg">
-              Upload any course content and get an AI tutor, quizzes, flashcards, and curated videos — all in one place.
+              Upload any course content and get an AI study mate, quizzes, flashcards, and curated videos — all in one place.
             </p>
           </div>
 

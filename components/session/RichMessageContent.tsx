@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { InlineMermaid } from './InlineMermaid';
 import { InlineQuiz } from './InlineQuiz';
 import { InlineFlashcards } from './InlineFlashcards';
+import { InlineImage } from './InlineImage';
 import 'katex/contrib/mhchem';
 
 /**
@@ -90,6 +91,15 @@ function makeComponents(invert?: boolean): Components {
           return <InlineFlashcards cards={data.cards ?? []} />;
         } catch {
           return <pre className="text-xs overflow-x-auto"><code>{raw}</code></pre>;
+        }
+      }
+
+      if (lang === 'image') {
+        try {
+          const data = JSON.parse(raw);
+          return <InlineImage query={data.query ?? ''} alt={data.alt ?? ''} />;
+        } catch {
+          return null;
         }
       }
 

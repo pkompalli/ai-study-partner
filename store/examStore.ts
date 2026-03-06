@@ -92,7 +92,7 @@ interface ExamState {
 
   // Actions
   fetchFormats: (courseId: string) => Promise<void>;
-  inferFormat: (courseId: string, examName: string) => Promise<void>;
+  inferFormat: (courseId: string, examName: string, description?: string) => Promise<void>;
   createFormat: (courseId: string, payload: {
     name: string;
     description?: string;
@@ -206,13 +206,13 @@ export const useExamStore = create<ExamState>((set, get) => ({
     }
   },
 
-  inferFormat: async (courseId, examName) => {
+  inferFormat: async (courseId, examName, description) => {
     set({ inferring: true, inferredFormat: null });
     try {
       const { data } = await api.post<{
         name?: string; description?: string; total_marks?: number; time_minutes?: number;
         sections?: Array<{ name: string; question_type: ExamSection['question_type']; num_questions: number; marks_per_question?: number }>;
-      }>('/api/exam/formats/infer', { courseId, examName });
+      }>('/api/exam/formats/infer', { courseId, examName, description });
       set({ inferredFormat: data });
     } finally {
       set({ inferring: false });

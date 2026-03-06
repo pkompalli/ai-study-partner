@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { ExamFormat, LocalAnswerState } from '@/types';
+import { InlineImage } from '@/components/session/InlineImage';
 import {
   QUESTION_TYPE_LABELS,
   QUESTION_TYPE_COLORS,
@@ -141,6 +142,11 @@ function PracticeSession() {
               rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
             >{question.dataset}</ReactMarkdown>
             </div>
+          )}
+
+          {/* Question image */}
+          {question.image && (
+            <InlineImage query={question.image.query} alt={question.image.alt} />
           )}
 
           {/* Question text */}

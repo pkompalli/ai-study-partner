@@ -8,7 +8,7 @@ export async function generateQuiz(
 ): Promise<QuizQuestion[]> {
   const context = recentMessages
     .slice(-8)
-    .map(m => `${m.role === 'user' ? 'Student' : 'Tutor'}: ${m.content}`)
+    .map(m => `${m.role === 'user' ? 'Student' : 'Study Mate'}: ${m.content}`)
     .join('\n');
 
   const response = await chatCompletion([

@@ -19,6 +19,8 @@ export const env = {
   },
   google: {
     apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '',
+    customSearchKey: process.env.GOOGLE_CUSTOM_SEARCH_API_KEY ?? '',
+    customSearchCx: process.env.GOOGLE_CUSTOM_SEARCH_CX ?? '',
   },
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY ?? '',

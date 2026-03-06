@@ -159,8 +159,9 @@ export function FormatSetupPanel({
     extractPaper, extractedPaper, paperExtracting, clearExtractedPaper, importPaper,
   } = useExamStore();
 
-  const [activeTab, setActiveTab] = useState<'upload' | 'manual'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'describe' | 'manual'>('upload');
   const [name, setName] = useState(examName ?? '');
+  const [descriptionText, setDescriptionText] = useState('');
   const [sections, setSections] = useState<Array<Partial<ExamSection> & { _key: string }>>([
     { _key: '1', name: 'Section A', question_type: 'mcq', num_questions: 10, marks_per_question: 1 },
   ]);
@@ -179,6 +180,14 @@ export function FormatSetupPanel({
       setUseInferred(true);
     }
   }, [inferredFormat]);
+
+  const handleDescribeInfer = async () => {
+    if (descriptionText.trim().length < 10) return;
+    clearInferredFormat();
+    setUseInferred(false);
+    setActiveTab('manual');
+    await inferFormat(courseId, '', descriptionText.trim());
+  };
 
   const handleInfer = async () => {
     if (!name.trim()) return;
@@ -276,11 +285,18 @@ export function FormatSetupPanel({
           Upload Paper
         </button>
         <button
+          onClick={() => setActiveTab('describe')}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors border-l border-gray-200 ${activeTab === 'describe' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Describe
+        </button>
+        <button
           onClick={() => setActiveTab('manual')}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 transition-colors border-l border-gray-200 ${activeTab === 'manual' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}
         >
           <GraduationCap className="h-3.5 w-3.5" />
-          Manual Setup
+          Manual
         </button>
       </div>
 
@@ -359,6 +375,31 @@ export function FormatSetupPanel({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'describe' && (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">Describe your exam format in plain text — exam name, sections, question types, marks, timing. The AI will parse it into a structured format you can review and edit.</p>
+          <textarea
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm min-h-[120px] resize-y"
+            placeholder={"e.g. A-Level Chemistry Paper 1\n3 hours, 100 marks total\nSection A: 30 MCQs, 1 mark each\nSection B: 5 short answer questions, 4 marks each\nSection C: 2 essay questions, 15 marks each"}
+            value={descriptionText}
+            onChange={e => setDescriptionText(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+              Cancel
+            </button>
+            <button
+              onClick={handleDescribeInfer}
+              disabled={descriptionText.trim().length < 10 || inferring}
+              className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+            >
+              {inferring ? <Spinner className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+              Generate Format
+            </button>
+          </div>
         </div>
       )}
 

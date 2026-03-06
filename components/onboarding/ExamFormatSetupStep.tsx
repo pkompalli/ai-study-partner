@@ -129,12 +129,15 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
     extractPaper, extractedPaper, paperExtracting, clearExtractedPaper, importPaper,
   } = useExamStore();
 
-  const [activeTab, setActiveTab] = useState<'upload' | 'manual'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'describe' | 'manual'>('upload');
 
   // Upload flow state
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // Describe flow state
+  const [descriptionText, setDescriptionText] = useState('');
 
   // Manual flow state
   const [manualName, setManualName] = useState(examName ?? '');
@@ -182,6 +185,15 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
   };
 
   const handleReset = () => { setStagedFiles([]); clearExtractedPaper(); };
+
+  // Describe handler
+  const handleDescribeInfer = async () => {
+    if (descriptionText.trim().length < 10) return;
+    clearInferredFormat();
+    setUseInferred(false);
+    setActiveTab('manual');
+    await inferFormat(courseId, '', descriptionText.trim());
+  };
 
   // Manual handlers
   const handleInfer = async () => {
@@ -267,11 +279,15 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
           <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm font-medium">
             <button onClick={() => setActiveTab('upload')}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 transition-colors ${activeTab === 'upload' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-              <Upload className="h-3.5 w-3.5" /> Upload Past Paper
+              <Upload className="h-3.5 w-3.5" /> Upload Paper
+            </button>
+            <button onClick={() => setActiveTab('describe')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 border-l border-gray-200 transition-colors ${activeTab === 'describe' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+              <FileText className="h-3.5 w-3.5" /> Describe
             </button>
             <button onClick={() => setActiveTab('manual')}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 border-l border-gray-200 transition-colors ${activeTab === 'manual' ? 'bg-primary-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-              <GraduationCap className="h-3.5 w-3.5" /> Manual Setup
+              <GraduationCap className="h-3.5 w-3.5" /> Manual
             </button>
           </div>
 
@@ -329,6 +345,26 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
                   Paper too long — only partial extraction completed
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'describe' && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500">Describe your exam format in plain text — exam name, sections, question types, marks, timing. The AI will parse it into a structured format you can review and edit.</p>
+              <textarea
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm min-h-[120px] resize-y"
+                placeholder={"e.g. A-Level Chemistry Paper 1\n3 hours, 100 marks total\nSection A: 30 MCQs, 1 mark each\nSection B: 5 short answer questions, 4 marks each\nSection C: 2 essay questions, 15 marks each"}
+                value={descriptionText}
+                onChange={e => setDescriptionText(e.target.value)}
+              />
+              <button
+                onClick={handleDescribeInfer}
+                disabled={descriptionText.trim().length < 10 || inferring}
+                className="w-full py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+              >
+                {inferring ? <Spinner className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+                Generate Format
+              </button>
             </div>
           )}
 

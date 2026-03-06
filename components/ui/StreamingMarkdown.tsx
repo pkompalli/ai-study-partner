@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { InlineMermaid } from '@/components/session/InlineMermaid'
 import { InlineQuiz } from '@/components/session/InlineQuiz'
 import { InlineFlashcards } from '@/components/session/InlineFlashcards'
+import { InlineImage } from '@/components/session/InlineImage'
 import 'katex/contrib/mhchem'
 
 /**
@@ -40,7 +41,7 @@ function preprocessLatex(content: string): string {
   return s.replace(/\x02(\d+)\x03/g, (_, i) => saved[+i])
 }
 
-// Allow single-$ inline math because the tutor prompts intentionally use $...$.
+// Allow single-$ inline math because the study mate prompts intentionally use $...$.
 const PLUGINS = { math: createMathPlugin({ singleDollarTextMath: true }) }
 
 function makeComponents(invert?: boolean, isStreaming?: boolean): Components {
@@ -82,6 +83,18 @@ function makeComponents(invert?: boolean, isStreaming?: boolean): Components {
           return <InlineFlashcards cards={data.cards ?? []} />
         } catch {
           return <pre className="text-xs overflow-x-auto"><code>{raw}</code></pre>
+        }
+      }
+
+      if (lang === 'image') {
+        if (isStreaming) {
+          return <div className="min-h-48 rounded-2xl bg-slate-50 animate-pulse my-4" />
+        }
+        try {
+          const data = JSON.parse(raw)
+          return <InlineImage query={data.query ?? ''} alt={data.alt ?? ''} />
+        } catch {
+          return null
         }
       }
 

@@ -245,27 +245,23 @@ export async function deleteExamFormat(formatId: string, userId: string) {
 
 // ─── Questions ────────────────────────────────────────────────────────────────
 
-export async function getExamQuestions(formatId: string, sectionId?: string) {
-  const supabase = await createServiceClient()
-  let query = supabase
-    .from('exam_questions')
-    .select(`
-      id, exam_format_id, section_id, topic_id, course_id,
-      question_text, dataset, options, correct_option_index,
-      max_marks, mark_scheme, depth, created_at,
-      exam_sections!inner ( name, question_type, sort_order ),
-      topics ( name )
-    `)
-    .eq('exam_format_id', formatId)
-    .order('created_at', { ascending: true })
+const EXAM_Q_COLS_WITH_IMAGE = `
+  id, exam_format_id, section_id, topic_id, course_id,
+  question_text, dataset, options, correct_option_index,
+  max_marks, mark_scheme, depth, image, created_at,
+  exam_sections!inner ( name, question_type, sort_order ),
+  topics ( name )
+`
+const EXAM_Q_COLS_NO_IMAGE = `
+  id, exam_format_id, section_id, topic_id, course_id,
+  question_text, dataset, options, correct_option_index,
+  max_marks, mark_scheme, depth, created_at,
+  exam_sections!inner ( name, question_type, sort_order ),
+  topics ( name )
+`
 
-  if (sectionId) {
-    query = query.eq('section_id', sectionId)
-  }
-
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map((r: any) => ({
+function mapExamQuestionRow(r: any) {
+  return {
     id: r.id,
     exam_format_id: r.exam_format_id,
     section_id: r.section_id,
@@ -281,43 +277,54 @@ export async function getExamQuestions(formatId: string, sectionId?: string) {
     max_marks: r.max_marks,
     mark_scheme: r.mark_scheme ?? [],
     depth: r.depth ?? 3,
-  }))
+    image: r.image ?? undefined,
+  }
+}
+
+export async function getExamQuestions(formatId: string, sectionId?: string) {
+  const supabase = await createServiceClient()
+
+  const run = async (cols: string) => {
+    let query = supabase
+      .from('exam_questions')
+      .select(cols)
+      .eq('exam_format_id', formatId)
+      .order('created_at', { ascending: true })
+    if (sectionId) query = query.eq('section_id', sectionId)
+    return query
+  }
+
+  let { data, error } = await run(EXAM_Q_COLS_WITH_IMAGE)
+  if (error && isMissingColumnError(error, 'image')) {
+    ;({ data, error } = await run(EXAM_Q_COLS_NO_IMAGE))
+  }
+  if (error) throw error
+  return (data ?? []).map(mapExamQuestionRow)
 }
 
 export async function getExamQuestionById(questionId: string) {
   const supabase = await createServiceClient()
-  const { data, error } = await supabase
-    .from('exam_questions')
-    .select(`
-      id, exam_format_id, section_id, topic_id, course_id,
-      question_text, dataset, options, correct_option_index,
-      max_marks, mark_scheme, depth,
-      exam_sections!inner ( name, question_type ),
-      topics ( name )
-    `)
-    .eq('id', questionId)
-    .single()
+
+  const COLS_WITH = `id, exam_format_id, section_id, topic_id, course_id,
+    question_text, dataset, options, correct_option_index,
+    max_marks, mark_scheme, depth, image,
+    exam_sections!inner ( name, question_type ),
+    topics ( name )`
+  const COLS_WITHOUT = `id, exam_format_id, section_id, topic_id, course_id,
+    question_text, dataset, options, correct_option_index,
+    max_marks, mark_scheme, depth,
+    exam_sections!inner ( name, question_type ),
+    topics ( name )`
+
+  let { data, error } = await supabase.from('exam_questions').select(COLS_WITH).eq('id', questionId).single()
+  if (error && isMissingColumnError(error, 'image')) {
+    ;({ data, error } = await supabase.from('exam_questions').select(COLS_WITHOUT).eq('id', questionId).single())
+  }
   if (error) {
     if (error.code === 'PGRST116') return null
     throw error
   }
-  return {
-    id: data.id,
-    exam_format_id: (data as any).exam_format_id,
-    section_id: data.section_id,
-    section_name: (data as any).exam_sections?.name,
-    section_question_type: (data as any).exam_sections?.question_type,
-    topic_id: data.topic_id ?? undefined,
-    topic_name: (data as any).topics?.name ?? undefined,
-    course_id: data.course_id,
-    question_text: data.question_text,
-    dataset: (data as any).dataset ?? undefined,
-    options: (data as any).options ?? undefined,
-    correct_option_index: (data as any).correct_option_index ?? undefined,
-    max_marks: (data as any).max_marks,
-    mark_scheme: (data as any).mark_scheme ?? [],
-    depth: (data as any).depth ?? 3,
-  }
+  return mapExamQuestionRow(data)
 }
 
 export async function saveExamQuestions(
@@ -335,10 +342,11 @@ export async function saveExamQuestions(
     max_marks: number
     mark_scheme: MarkCriterion[]
     depth?: number
+    image?: { query: string; alt: string }
   }>,
 ) {
   const supabase = await createServiceClient()
-  const rows = questions.map((q) => ({
+  const baseRows = questions.map((q) => ({
     ...(q.id ? { id: q.id } : {}),
     exam_format_id: formatId,
     user_id: userId,
@@ -353,7 +361,15 @@ export async function saveExamQuestions(
     mark_scheme: q.mark_scheme,
     depth: q.depth ?? 3,
   }))
-  const { error } = await supabase.from('exam_questions').insert(rows)
+
+  // Try with image column first; fall back without if column doesn't exist yet
+  const rowsWithImage = baseRows.map((r, i) => ({ ...r, image: questions[i].image ?? null }))
+  const { error } = await supabase.from('exam_questions').insert(rowsWithImage)
+  if (error && isMissingColumnError(error, 'image')) {
+    const { error: err2 } = await supabase.from('exam_questions').insert(baseRows)
+    if (err2) throw err2
+    return
+  }
   if (error) throw error
 }
 

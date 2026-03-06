@@ -96,23 +96,65 @@ Rules:
 - Vary question types appropriately: exams with essays need long_answer; sciences need calculation; sciences/geography need data_analysis`;
 }
 
+// ─── Format inference from free text description ──────────────────────────────
+
+export function buildExamFormatFromDescriptionPrompt(description: string, courseName: string): string {
+  return `You are an educational exam specialist. A user has described an exam format in free text. Parse their description into a structured exam format.
+
+Course: "${courseName}"
+
+User's description:
+---
+${description.slice(0, 5000)}
+---
+
+Return ONLY valid JSON — no markdown, no code fences, no extra text:
+{
+  "name": "Full exam name",
+  "description": "Brief description of the exam format",
+  "total_marks": 100,
+  "time_minutes": 180,
+  "instructions": "General exam instructions for the candidate (if mentioned, else null)",
+  "sections": [
+    {
+      "name": "Section A — Multiple Choice",
+      "question_type": "mcq",
+      "num_questions": 30,
+      "marks_per_question": 1,
+      "instructions": "Answer ALL questions in this section."
+    }
+  ]
+}
+
+question_type must be one of: mcq, short_answer, long_answer, data_analysis, calculation
+
+Rules:
+- Extract as much structure as possible from the description
+- If the user mentions specific section names, question types, mark allocations, or timings, use them
+- If the user gives a well-known exam name (A-Level, IB, AP, SAT, GRE, GCSE), use the actual section structure for that exam, incorporating any specific details the user provided
+- If details are vague or missing, make reasonable assumptions based on the subject and level
+- Infer question types from context: "essay" → long_answer, "problems" → calculation, "multiple choice" → mcq, etc.
+- Always generate at least one section
+- Total marks and time should be consistent with the sections`;
+}
+
 // ─── Question generation ───────────────────────────────────────────────────────
 
 const QUESTION_TYPE_INSTRUCTIONS: Record<string, string> = {
   mcq: `Generate a multiple-choice question with exactly 4 options. ONE must be correct, THREE must be plausible distractors (common misconceptions, subtly wrong values, reversed causality).
-Return JSON fields: question_text, options (array of 4 strings), correct_option_index (0-3), max_marks, mark_scheme ([{label, marks}])`,
+Return JSON fields: question_text, options (array of 4 strings), correct_option_index (0-3), max_marks, mark_scheme ([{label, marks}]). Optionally include image ({query, alt}) if the question requires a visual.`,
 
   short_answer: `Generate a short-answer question requiring 2–4 sentences. Include line references or stimulus material if relevant.
-Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — each criterion worth 1 mark`,
+Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — each criterion worth 1 mark. Optionally include image ({query, alt}) if the question requires a visual.`,
 
   long_answer: `Generate a structured essay/extended answer question worth multiple marks.
-Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — group into assessment objectives (Knowledge, Application, Analysis, Evaluation)`,
+Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — group into assessment objectives (Knowledge, Application, Analysis, Evaluation). Optionally include image ({query, alt}) if the question requires a visual.`,
 
   data_analysis: `Generate a data analysis question with a dataset. The dataset must be a markdown table or clearly formatted scenario with specific numerical values.
-Return JSON fields: question_text, dataset (markdown table or scenario text), max_marks, mark_scheme ([{label, description, marks}])`,
+Return JSON fields: question_text, dataset (markdown table or scenario text), max_marks, mark_scheme ([{label, description, marks}]). Optionally include image ({query, alt}) if the question references a diagram or graph.`,
 
   calculation: `Generate a quantitative calculation question. Include all necessary constants, units, and values in the question. Show the expected working in the mark scheme.
-Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — include Method (1), Substitution (1), Answer with units (1+) criteria`,
+Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — include Method (1), Substitution (1), Answer with units (1+) criteria. Optionally include image ({query, alt}) if the question references a diagram or apparatus setup.`,
 };
 
 const DIFFICULTY_LABELS: Record<number, string> = {
@@ -162,6 +204,14 @@ Quality requirements:
 - Difficulty calibrated precisely to the specified difficulty level above
 - For calculation questions: include every piece of data the student needs; state units
 - For data analysis: dataset must have ≥4 data points; question must require processing the data (not just reading it off)
+
+IMAGE-BASED QUESTIONS: For topics where a visual is essential to the question (e.g. identifying biological structures from a micrograph, reading a phase diagram, interpreting an experimental setup, identifying geological features, anatomical labelling), you SHOULD include an image field:
+  "image": {"query": "specific search query for the image", "alt": "what the image shows"}
+The image will be fetched and displayed to the student alongside the question. Use this when:
+- The question asks the student to identify, label, or interpret a visual (e.g. "Identify the organelle labelled X")
+- The question references a diagram, graph, or photograph that the student needs to see
+- The subject naturally requires visual stimuli (biology, anatomy, geography, chemistry apparatus, physics diagrams)
+Do NOT use images for purely textual/mathematical questions.
 
 Notation: use LaTeX for all math and chemistry. Inline math: $...$, display math: $$...$$ (for equations on their own line). NEVER use \\begin{align*}, \\begin{equation}, \\begin{aligned}, \\begin{array}, or any \\begin{}...\\end{} LaTeX environments — use $$...$$ for display math instead. Chemical formulas/equations MUST use \\ce{} INSIDE dollar signs: $\\ce{H2SO4}$, $\\ce{Ca^{2+}}$, $\\ce{2H2 + O2 -> 2H2O}$. ALL LaTeX — including \\ce{}, superscripts ^{}, subscripts _{}, Greek letters, units like \\mathrm{} — MUST be inside $...$ or $$...$$ delimiters. NEVER write bare LaTeX without $ delimiters. Use \\cdot (NOT \\cdotp) for multiplication dots and unit separators, e.g. $\\mathrm{J\\,mol^{-1}\\,K^{-1}}$.
 
@@ -234,7 +284,7 @@ export function buildHintPrompt(params: {
     ? 'Give a broad Socratic hint that points the student toward the right approach without revealing any answer content.'
     : 'The student has already received one hint. Give a more specific hint that clarifies the key concept or method they are missing — but still do not reveal the answer directly.';
 
-  return `You are a tutor helping a student with an exam question. Do NOT give the answer.
+  return `You are a study mate helping a student with an exam question. Do NOT give the answer.
 
 Question: ${params.questionText}
 Question type: ${params.questionType.replace('_', ' ')}
@@ -258,7 +308,7 @@ export function buildFullAnswerPrompt(params: {
     .map(c => `  - ${c.label}${c.description ? ': ' + c.description : ''} [${c.marks} mark${c.marks !== 1 ? 's' : ''}]`)
     .join('\n');
 
-  return `You are an expert tutor. Provide the complete model answer and worked solution for this exam question.
+  return `You are an expert study mate. Provide the complete model answer and worked solution for this exam question.
 
 Question: ${params.questionText}
 ${params.dataset ? `\nData / Context:\n${params.dataset}\n` : ''}

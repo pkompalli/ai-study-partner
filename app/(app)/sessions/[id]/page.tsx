@@ -16,6 +16,7 @@ import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import type { ExamQuestion } from '@/types';
+import { InlineImage } from '@/components/session/InlineImage';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   1: 'Easy', 2: 'Medium-Easy', 3: 'Standard', 4: 'Hard', 5: 'Stretch',
@@ -273,6 +274,11 @@ function ExamQuestionCard({
           </div>
         )}
 
+        {/* Question image */}
+        {question.image && (
+          <InlineImage query={question.image.query} alt={question.image.alt} />
+        )}
+
         <div className="text-sm text-gray-900 font-medium leading-relaxed">
           <ReactMarkdown
             className="prose prose-sm max-w-none"
@@ -484,6 +490,7 @@ export default function SessionPage() {
     loadSessionBatch, loadMoreSessionBatch, refreshBatchAtDifficulty,
     setSessionAnswerText, setSessionSelectedOption, submitSessionAnswer,
     fetchSessionHint, clearSessionHint,
+    persistExamState, restoreExamState, clearSessionExam,
   } = useExamStore();
 
   const [sessionLoaded, setSessionLoaded] = useState(false);
@@ -515,12 +522,30 @@ export default function SessionPage() {
     resetMcqState();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Clear and restore exam state when switching sessions (topics)
+  const prevSessionIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!id) return;
+    // Persist exam state for the previous session before clearing
+    if (prevSessionIdRef.current && prevSessionIdRef.current !== id) {
+      const { sessionBatch } = useExamStore.getState();
+      if (sessionBatch.length > 0) {
+        persistExamState(prevSessionIdRef.current);
+      }
+    }
+    prevSessionIdRef.current = id;
+
+    // Clear stale state immediately — restore happens after loadSession resolves
+    // (see the loadSession effect below) so we have the correct topic_id
+    clearSessionExam();
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
 
-    // Run loadSession and fetchSummary in parallel — fetchSummary only needs
-    // the session ID (from URL), not the session object.
+    // Load session first, then fetch summary — running them in parallel causes
+    // a race where loadSession resets topicSummary after fetchSummary sets it.
     const sessionPromise = loadSession(id).then(() => {
       if (cancelled) return;
       const session = useSessionStore.getState().activeSession;
@@ -529,21 +554,34 @@ export default function SessionPage() {
         fetchFormats(session.course_id).catch(() => {});
         router.prefetch(`/courses/${session.course_id}`);
       }
-    });
+      // Restore exam state for the new session — topic key first, then session key
+      const topicKey = session?.topic_id ? `topic_${session.topic_id}` : null;
+      (topicKey ? restoreExamState(topicKey) : false) || restoreExamState(id);
 
-    const summaryPromise = fetchSummary(id, 0);
+      // Fetch summary after loadSession so it doesn't get wiped
+      fetchSummary(id, 0);
+    });
 
     // Mark session as loaded once loadSession resolves (don't wait for summary)
     sessionPromise.finally(() => {
       if (!cancelled) setSessionLoaded(true);
     });
 
-    // summaryPromise runs in parallel; its result flows through summaryStreaming/topicSummary state
-
     return () => {
       cancelled = true;
+      // Persist exam state when leaving this session
+      const { sessionBatch } = useExamStore.getState();
+      if (sessionBatch.length > 0) {
+        persistExamState(id);
+        // Also persist under topic key so it survives across sessions for the same topic
+        const session = useSessionStore.getState().activeSession;
+        if (session?.topic_id) {
+          persistExamState(`topic_${session.topic_id}`);
+        }
+      }
+      clearSessionExam();
     };
-  }, [id, loadSession, fetchSummary, fetchCourse, fetchFormats, router]);
+  }, [id, loadSession, fetchSummary, fetchCourse, fetchFormats, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visibleMessages = messages.filter(m => m.role !== 'system');
 
@@ -800,7 +838,7 @@ export default function SessionPage() {
                 </div>
               )}
               {activeSession?.status === 'active' && (
-                <ChatInput onSend={handleSend} disabled={isStreaming} placeholder="Ask your AI tutor anything..." />
+                <ChatInput onSend={handleSend} disabled={isStreaming} placeholder="Ask your study mate anything..." />
               )}
             </>
           )}

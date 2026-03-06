@@ -1,5 +1,6 @@
 import { chatCompletion, chatCompletionStream } from '@/lib/llm/client';
 import { buildSummaryProsePrompt, buildSummaryInteractivePrompt } from '@/lib/llm/prompts';
+import { analyzeImageNeeds, buildImageDirective, insertMissingImages, type ImageNeedsResult } from '@/lib/images/needsAnalyzer';
 
 export interface SummaryQuestion {
   question: string;
@@ -32,6 +33,19 @@ export async function* streamTopicSummaryGenerator(
     depth?: number;
   },
 ): AsyncGenerator<string, SummaryInteractiveResult, unknown> {
+  const depth = params.depth ?? 0;
+
+  // Analyze whether this topic needs images
+  let imageNeeds: ImageNeedsResult = { needsImages: false, imageNeeds: [], domainHint: null };
+  try {
+    imageNeeds = await analyzeImageNeeds(
+      params.topicName,
+      params.chapterName,
+      params.courseName,
+      depth,
+    );
+  } catch { /* proceed without images */ }
+
   const prosePrompt = buildSummaryProsePrompt(
     params.topicName,
     params.chapterName,
@@ -39,21 +53,36 @@ export async function* streamTopicSummaryGenerator(
     params.yearOfStudy,
     params.examName,
     params.goal,
-    params.depth ?? 0,
+    depth,
   );
 
+  // Append image directive if needed
+  const imageDirective = buildImageDirective(imageNeeds);
+  const fullProsePrompt = imageDirective
+    ? `${prosePrompt}\n\n${imageDirective}`
+    : prosePrompt;
+
   // Scale token budget by depth so deeper summaries aren't truncated
-  const depth = params.depth ?? 0;
   const proseTokenLimit = depth <= 1 ? 1500 : depth === 2 ? 2000 : depth === 3 ? 3500 : depth === 4 ? 5000 : 7000;
 
   // Stream the prose summary
   let summaryAccumulated = '';
   for await (const chunk of chatCompletionStream([
-    { role: 'system', content: prosePrompt },
+    { role: 'system', content: fullProsePrompt },
     { role: 'user', content: 'Write the summary.' },
   ], { maxTokens: proseTokenLimit })) {
     summaryAccumulated += chunk;
     yield chunk;
+  }
+
+  // Post-generation: insert missing images if needed
+  if (imageNeeds.needsImages) {
+    const patched = insertMissingImages(summaryAccumulated, imageNeeds);
+    if (patched.length > summaryAccumulated.length) {
+      const appended = patched.slice(summaryAccumulated.length);
+      summaryAccumulated = patched;
+      yield appended;
+    }
   }
 
   // Generate comprehension questions + starters non-streaming (fast, separate call)

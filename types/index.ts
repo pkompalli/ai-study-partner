@@ -165,6 +165,11 @@ export interface MarkCriterion {
   marks: number;
 }
 
+export interface ExamQuestionImage {
+  query: string;
+  alt: string;
+}
+
 export interface ExamQuestion {
   id: string;
   exam_format_id: string;
@@ -181,6 +186,7 @@ export interface ExamQuestion {
   max_marks: number;
   mark_scheme: MarkCriterion[];
   depth: number;
+  image?: ExamQuestionImage;
 }
 
 export interface ExamAttempt {

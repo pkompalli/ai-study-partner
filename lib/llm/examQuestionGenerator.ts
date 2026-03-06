@@ -1,5 +1,5 @@
 import { chatCompletion } from '@/lib/llm/client';
-import { buildExamFormatInferPrompt, buildExamQuestionPrompt, buildPaperExtractionPrompt } from '@/lib/llm/examPrompts';
+import { buildExamFormatInferPrompt, buildExamFormatFromDescriptionPrompt, buildExamQuestionPrompt, buildPaperExtractionPrompt } from '@/lib/llm/examPrompts';
 import { inferAcademicLevel } from '@/lib/llm/prompts';
 import { extractTextFromPdfBuffer } from '@/lib/llm/pdfText';
 import type { ExamSection, MarkCriterion } from '@/types';
@@ -19,6 +19,7 @@ export interface GeneratedQuestion {
   correct_option_index?: number;
   max_marks: number;
   mark_scheme: MarkCriterion[];
+  image?: { query: string; alt: string };
 }
 
 interface InferredFormat {
@@ -218,6 +219,33 @@ export async function inferExamFormat(examName: string, courseName: string): Pro
   return sanitizeInferredFormat(parsed, examName);
 }
 
+// ─── Infer exam format from free text description ────────────────────────────
+
+export async function inferExamFormatFromDescription(description: string, courseName: string): Promise<InferredFormat> {
+  const prompt = buildExamFormatFromDescriptionPrompt(description, courseName);
+  const raw = await chatCompletion(
+    [{ role: 'user', content: prompt }],
+    { temperature: 0.3, maxTokens: 1200 },
+  );
+
+  let parsed: Partial<InferredFormat> = {};
+  try {
+    const cleaned = raw.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    parsed = JSON.parse(cleaned);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        parsed = {};
+      }
+    }
+  }
+
+  return sanitizeInferredFormat(parsed, parsed.name ?? 'Exam');
+}
+
 // ─── Generate question bank ───────────────────────────────────────────────────
 
 /** Run all question generations with bounded concurrency */
@@ -308,6 +336,15 @@ function parseGeneratedQuestion(
     return null;
   }
 
+  // Extract image field if present
+  let image: { query: string; alt: string } | undefined;
+  if (parsed['image'] && typeof parsed['image'] === 'object') {
+    const img = parsed['image'] as Record<string, unknown>;
+    if (typeof img.query === 'string' && typeof img.alt === 'string') {
+      image = { query: img.query, alt: img.alt };
+    }
+  }
+
   return {
     section_id: section.id,
     topic_id: topicId,
@@ -320,6 +357,7 @@ function parseGeneratedQuestion(
       ? parsed['max_marks'] as number : defaultMarks,
     mark_scheme: Array.isArray(parsed['mark_scheme'])
       ? parsed['mark_scheme'] as MarkCriterion[] : [],
+    image,
   };
 }
 

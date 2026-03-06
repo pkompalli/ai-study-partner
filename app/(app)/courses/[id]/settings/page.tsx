@@ -14,6 +14,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import type { ExamSection, ExamFormat, LocalAnswerState } from '@/types';
+import { InlineImage } from '@/components/session/InlineImage';
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
   mcq: 'MCQ',
@@ -657,6 +658,11 @@ function PracticeSession() {
               rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
             >{question.dataset}</ReactMarkdown>
             </div>
+          )}
+
+          {/* Question image */}
+          {question.image && (
+            <InlineImage query={question.image.query} alt={question.image.alt} />
           )}
 
           {/* Question text */}
