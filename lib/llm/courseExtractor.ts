@@ -81,6 +81,21 @@ export async function extractCourseFromJSON(jsonText: string): Promise<CourseStr
   return parseStructureJSON(response);
 }
 
+export async function refineCourseStructure(
+  currentStructure: CourseStructure,
+  feedback: string,
+): Promise<CourseStructure> {
+  const response = await chatCompletion([
+    { role: 'system', content: COURSE_EXTRACTOR_PROMPT },
+    {
+      role: 'user',
+      content: `Here is the current course structure:\n\n${JSON.stringify(currentStructure, null, 2)}\n\nThe user wants the following changes:\n${feedback}\n\nApply the requested changes and return the updated structure in the same JSON format. Preserve existing IDs where items are unchanged. Only modify what the user asked for.`,
+    },
+  ], { temperature: 0.3 });
+
+  return parseStructureJSON(response);
+}
+
 function parseStructureJSON(raw: string): CourseStructure {
   console.log('[courseExtractor] raw LLM response (first 500 chars):', raw.slice(0, 500));
   // Strip possible markdown code fences

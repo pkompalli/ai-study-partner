@@ -32,30 +32,25 @@ export async function GET(
     const session = await getSessionById(id, user.id)
     if (!session) return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 })
 
-    // When depth=0, restore last viewed depth from cache
+    // When depth=0, restore last viewed depth from cache — run both lookups in parallel
     let depth: number
     if (rawDepth === 0) {
-      let lastDepth: number | null = null
-      if (session.chapter_id) {
-        lastDepth = await getLastCachedChapterDepth(user.id, session.chapter_id)
-      }
-      if (lastDepth === null && session.topic_id) {
-        lastDepth = await getLastCachedDepth(user.id, session.topic_id)
-      }
-      depth = lastDepth ?? 1
+      const [chapterDepth, topicDepth] = await Promise.all([
+        session.chapter_id ? getLastCachedChapterDepth(user.id, session.chapter_id) : null,
+        session.topic_id ? getLastCachedDepth(user.id, session.topic_id) : null,
+      ])
+      depth = chapterDepth ?? topicDepth ?? 1
     } else {
       depth = Math.max(1, Math.min(5, rawDepth))
     }
 
-    // Check cache (chapter-level first, then topic-level) unless force=true
+    // Check cache (chapter-level and topic-level in parallel) unless force=true
     if (!force) {
-      let cached = null
-      if (session.chapter_id) {
-        cached = await getCachedChapterSummary(user.id, session.chapter_id, depth)
-      }
-      if (!cached && session.topic_id) {
-        cached = await getCachedSummary(user.id, session.topic_id, depth)
-      }
+      const [chapterCached, topicCached] = await Promise.all([
+        session.chapter_id ? getCachedChapterSummary(user.id, session.chapter_id, depth) : null,
+        session.topic_id ? getCachedSummary(user.id, session.topic_id, depth) : null,
+      ])
+      const cached = chapterCached ?? topicCached
 
       if (cached) {
         // Reconstruct questions array from cache
@@ -100,19 +95,18 @@ export async function GET(
 
     // Cache miss or force=true — generate via LLM
     const svc = await createServiceClient()
-    let topicName = 'General'
-    let chapterName: string | undefined
-
-    if (session.topic_id) {
-      const { data } = await svc.from('topics').select('name').eq('id', session.topic_id).single()
-      if (data) topicName = data.name
-    }
-    if (session.chapter_id) {
-      const { data } = await svc.from('chapters').select('name').eq('id', session.chapter_id).single()
-      if (data) chapterName = data.name
-    }
-
-    const courseCtx = await getCourseContext(session.course_id).catch(() => null)
+    // Fetch topic name, chapter name, and course context in parallel
+    const [topicResult, chapterResult, courseCtx] = await Promise.all([
+      session.topic_id
+        ? svc.from('topics').select('name').eq('id', session.topic_id).single()
+        : Promise.resolve({ data: null }),
+      session.chapter_id
+        ? svc.from('chapters').select('name').eq('id', session.chapter_id).single()
+        : Promise.resolve({ data: null }),
+      getCourseContext(session.course_id).catch(() => null),
+    ])
+    const topicName = topicResult.data?.name ?? 'General'
+    const chapterName: string | undefined = chapterResult.data?.name ?? undefined
 
     const encoder = new TextEncoder()
     const stream = new ReadableStream({

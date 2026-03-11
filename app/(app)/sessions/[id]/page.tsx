@@ -288,6 +288,18 @@ function ExamQuestionCard({
         </div>
 
 
+        {/* Ranking/Scenario options list (non-selectable) */}
+        {!isMcq && question.options && question.options.length > 0 && (
+          <div className="space-y-1.5 bg-gray-50 rounded-lg p-3 border border-gray-200">
+            {question.options.map((opt, idx) => (
+              <div key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                <span className="font-semibold text-gray-500 flex-shrink-0">{String.fromCharCode(65 + idx)}:</span>
+                <span>{opt}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Answer */}
         {isMcq ? (
           <div className="space-y-1.5">
@@ -531,6 +543,12 @@ export default function SessionPage() {
       const { sessionBatch } = useExamStore.getState();
       if (sessionBatch.length > 0) {
         persistExamState(prevSessionIdRef.current);
+        const prevSession = useSessionStore.getState().activeSession;
+        if (prevSession?.chapter_id) {
+          persistExamState(`chapter_${prevSession.chapter_id}`);
+        } else if (prevSession?.topic_id) {
+          persistExamState(`topic_${prevSession.topic_id}`);
+        }
       }
     }
     prevSessionIdRef.current = id;
@@ -544,8 +562,10 @@ export default function SessionPage() {
     if (!id) return;
     let cancelled = false;
 
-    // Load session first, then fetch summary — running them in parallel causes
-    // a race where loadSession resets topicSummary after fetchSummary sets it.
+    // Start summary fetch in parallel with session load — both independently
+    // fetch the session from DB. fetchSummary resets topicSummary itself.
+    fetchSummary(id, 0);
+
     const sessionPromise = loadSession(id).then(() => {
       if (cancelled) return;
       const session = useSessionStore.getState().activeSession;
@@ -554,12 +574,12 @@ export default function SessionPage() {
         fetchFormats(session.course_id).catch(() => {});
         router.prefetch(`/courses/${session.course_id}`);
       }
-      // Restore exam state for the new session — topic key first, then session key
+      // Restore exam state — chapter-specific key first, then topic, then session
+      const chapterKey = session?.chapter_id ? `chapter_${session.chapter_id}` : null;
       const topicKey = session?.topic_id ? `topic_${session.topic_id}` : null;
-      (topicKey ? restoreExamState(topicKey) : false) || restoreExamState(id);
-
-      // Fetch summary after loadSession so it doesn't get wiped
-      fetchSummary(id, 0);
+      (chapterKey ? restoreExamState(chapterKey) : false)
+        || (topicKey ? restoreExamState(topicKey) : false)
+        || restoreExamState(id);
     });
 
     // Mark session as loaded once loadSession resolves (don't wait for summary)
@@ -573,9 +593,11 @@ export default function SessionPage() {
       const { sessionBatch } = useExamStore.getState();
       if (sessionBatch.length > 0) {
         persistExamState(id);
-        // Also persist under topic key so it survives across sessions for the same topic
         const session = useSessionStore.getState().activeSession;
-        if (session?.topic_id) {
+        // Persist under chapter key (most specific) or topic key
+        if (session?.chapter_id) {
+          persistExamState(`chapter_${session.chapter_id}`);
+        } else if (session?.topic_id) {
           persistExamState(`topic_${session.topic_id}`);
         }
       }

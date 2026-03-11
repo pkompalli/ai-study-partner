@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, GraduationCap, BookOpen, Plus, ChevronDown, ChevronRight,
-  Pencil, Check, X, RefreshCw, Trash2, Edit3, ClipboardList,
+  Pencil, Check, X, RefreshCw, Trash2, Edit3, ClipboardList, Zap,
 } from 'lucide-react';
 import { useCourseStore } from '@/store/courseStore';
 import { useExamStore } from '@/store/examStore';
@@ -227,7 +227,7 @@ function FormatEditor({
   onSave: (updated: ExamFormat) => void;
   onCancel: () => void;
 }) {
-  const { updateFormat } = useExamStore();
+  const { updateFormat, inferFormat, inferredFormat, inferring, clearInferredFormat } = useExamStore();
   const [name, setName] = useState(format.name);
   const [timeMinutes, setTimeMinutes] = useState(format.time_minutes?.toString() ?? '');
   const [totalMarks, setTotalMarks] = useState(format.total_marks?.toString() ?? '');
@@ -235,6 +235,18 @@ function FormatEditor({
     format.sections.map(s => ({ ...s, _key: s.id }))
   );
   const [saving, setSaving] = useState(false);
+  const [refineText, setRefineText] = useState('');
+  const [useInferred, setUseInferred] = useState(false);
+
+  useEffect(() => {
+    if (inferredFormat && !useInferred) {
+      setName(inferredFormat.name ?? name);
+      if (inferredFormat.sections?.length) {
+        setSections(inferredFormat.sections.map((s, i) => ({ ...s, _key: String(Date.now() + i) })));
+      }
+      setUseInferred(true);
+    }
+  }, [inferredFormat]);
 
   const handleSectionChange = (key: string, field: string, value: unknown) => {
     setSections(prev => prev.map(s => s._key === key ? { ...s, [field]: value } : s));
@@ -246,6 +258,15 @@ function FormatEditor({
 
   const handleAddSection = () => {
     setSections(prev => [...prev, { _key: String(Date.now()), name: '', question_type: 'short_answer', num_questions: 5 }]);
+  };
+
+  const handleRefine = async () => {
+    if (refineText.trim().length < 5 || sections.length === 0) return;
+    const currentDesc = `Current format: "${name}"\nSections:\n${sections.map(s => `- ${s.name} (${s.question_type}, ${s.num_questions} questions, ${s.marks_per_question ?? '?'} marks each)`).join('\n')}\n\nUser's requested changes: ${refineText.trim()}`;
+    clearInferredFormat();
+    setUseInferred(false);
+    setRefineText('');
+    await inferFormat(format.course_id, '', currentDesc);
   };
 
   const handleSave = async () => {
@@ -320,6 +341,30 @@ function FormatEditor({
           ))}
         </div>
       </div>
+
+      {/* AI Refinement input */}
+      {sections.length > 0 && (
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Refine with AI</label>
+          <div className="flex gap-2">
+            <input
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              placeholder="e.g. Add a ranking section, change Section B to 10 questions..."
+              value={refineText}
+              onChange={e => setRefineText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}
+            />
+            <button
+              onClick={handleRefine}
+              disabled={refineText.trim().length < 5 || inferring}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 rounded-lg text-sm font-medium hover:bg-primary-100 disabled:opacity-50 transition-colors whitespace-nowrap"
+            >
+              {inferring ? <Spinner className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+              Refine
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 pt-1">
         <button
@@ -548,9 +593,12 @@ function CourseSection({ course }: { course: Course }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
       {/* Course header */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left"
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+        className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 transition-colors text-left cursor-pointer"
       >
         <div className="h-9 w-9 rounded-xl bg-primary-50 flex items-center justify-center flex-shrink-0">
           {course.goal === 'exam_prep'
@@ -565,7 +613,7 @@ function CourseSection({ course }: { course: Course }) {
           ? <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
           : <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
         }
-      </button>
+      </div>
 
       {/* Expanded body */}
       {open && (

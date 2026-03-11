@@ -35,7 +35,8 @@ Return ONLY valid JSON — no markdown, no code fences:
 }
 
 Rules for sections:
-- question_type must be: mcq, short_answer, long_answer, data_analysis, calculation
+- question_type must be: mcq, short_answer, long_answer, data_analysis, calculation, ranking, scenario
+- Use ranking for SJT (situational judgement test) style questions where candidates rank actions; use scenario for case-study or scenario-based questions
 - Infer question_type from the section heading and question style
 - num_questions = actual count of questions you extracted for that section
 
@@ -93,7 +94,7 @@ Rules:
 - Use realistic mark allocations and timings
 - For well-known exams (A-Level, IB, AP, SAT, GRE, GCSE, etc.) use the actual section structure
 - If the exam is not widely known, generate a sensible structure based on the subject and level inferred from the course name
-- Vary question types appropriately: exams with essays need long_answer; sciences need calculation; sciences/geography need data_analysis`;
+- Vary question types appropriately: exams with essays need long_answer; sciences need calculation; sciences/geography need data_analysis; medical/professional exams need ranking (SJT) and scenario`;
 }
 
 // ─── Format inference from free text description ──────────────────────────────
@@ -133,7 +134,7 @@ Rules:
 - If the user mentions specific section names, question types, mark allocations, or timings, use them
 - If the user gives a well-known exam name (A-Level, IB, AP, SAT, GRE, GCSE), use the actual section structure for that exam, incorporating any specific details the user provided
 - If details are vague or missing, make reasonable assumptions based on the subject and level
-- Infer question types from context: "essay" → long_answer, "problems" → calculation, "multiple choice" → mcq, etc.
+- Infer question types from context: "essay" → long_answer, "problems" → calculation, "multiple choice" → mcq, "SJT"/"situational judgement"/"ranking" → ranking, "scenario"/"case study" → scenario, etc.
 - Always generate at least one section
 - Total marks and time should be consistent with the sections`;
 }
@@ -155,6 +156,13 @@ Return JSON fields: question_text, dataset (markdown table or scenario text), ma
 
   calculation: `Generate a quantitative calculation question. Include all necessary constants, units, and values in the question. Show the expected working in the mark scheme.
 Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — include Method (1), Substitution (1), Answer with units (1+) criteria. Optionally include image ({query, alt}) if the question references a diagram or apparatus setup.`,
+
+  ranking: `Generate a scenario-based ranking question (SJT style). Write a realistic professional scenario as a "dataset" field, then present 5 actions that the candidate must rank from most to least appropriate.
+Return JSON fields: dataset (the scenario text — a realistic workplace/clinical/professional situation, 3–5 sentences), question_text (e.g. "Rank the following actions in order of appropriateness (1 = Most appropriate, 5 = Least appropriate)."), options (array of exactly 5 action strings labelled A–E), correct_option_index (index 0–4 of the MOST appropriate action), max_marks, mark_scheme ([{label, description, marks}] — award marks for correct ranking positions).
+The scenario must be specific, nuanced, and test professional judgement — not just factual knowledge. Include realistic tensions (e.g. patient safety vs team dynamics, urgency vs protocol).`,
+
+  scenario: `Generate a scenario-based question. Write a realistic professional/clinical scenario as a "dataset" field, then ask the candidate what they would do or what the best course of action is.
+Return JSON fields: dataset (the scenario — a realistic situation, 3–6 sentences with specific details), question_text (what the candidate must answer about the scenario), max_marks, mark_scheme ([{label, description, marks}]). For MCQ-style scenario questions, also include options (array of 4–5 strings) and correct_option_index. The scenario should test applied judgement and decision-making, not just recall.`,
 };
 
 const DIFFICULTY_LABELS: Record<number, string> = {

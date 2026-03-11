@@ -15,6 +15,8 @@ export const QUESTION_TYPE_LABELS: Record<string, string> = {
   long_answer: 'Long Answer',
   data_analysis: 'Data Analysis',
   calculation: 'Calculation',
+  ranking: 'Ranking (SJT)',
+  scenario: 'Scenario',
 };
 
 export const QUESTION_TYPE_COLORS: Record<string, string> = {
@@ -23,6 +25,8 @@ export const QUESTION_TYPE_COLORS: Record<string, string> = {
   long_answer: 'bg-purple-50 text-purple-700 border-purple-200',
   data_analysis: 'bg-amber-50 text-amber-700 border-amber-200',
   calculation: 'bg-red-50 text-red-700 border-red-200',
+  ranking: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  scenario: 'bg-teal-50 text-teal-700 border-teal-200',
 };
 
 // ─── Section editor row ───────────────────────────────────────────────────────
@@ -53,6 +57,8 @@ export function SectionRow({
           <option value="long_answer">Long Answer</option>
           <option value="data_analysis">Data Analysis</option>
           <option value="calculation">Calculation</option>
+          <option value="ranking">Ranking (SJT)</option>
+          <option value="scenario">Scenario</option>
         </select>
         <div className="flex items-center gap-1">
           <input
@@ -170,6 +176,7 @@ export function FormatSetupPanel({
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [refineText, setRefineText] = useState('');
 
   useEffect(() => {
     if (inferredFormat && !useInferred) {
@@ -187,6 +194,15 @@ export function FormatSetupPanel({
     setUseInferred(false);
     setActiveTab('manual');
     await inferFormat(courseId, '', descriptionText.trim());
+  };
+
+  const handleRefine = async () => {
+    if (refineText.trim().length < 5 || sections.length === 0) return;
+    const currentDesc = `Current format: "${name}"\nSections:\n${sections.map(s => `- ${s.name} (${s.question_type}, ${s.num_questions} questions, ${s.marks_per_question ?? '?'} marks each)`).join('\n')}\n\nUser's requested changes: ${refineText.trim()}`;
+    clearInferredFormat();
+    setUseInferred(false);
+    setRefineText('');
+    await inferFormat(courseId, '', currentDesc);
   };
 
   const handleInfer = async () => {
@@ -443,6 +459,30 @@ export function FormatSetupPanel({
               ))}
             </div>
           </div>
+
+          {/* AI Refinement input */}
+          {sections.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Refine with AI</label>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                  placeholder="e.g. Add a ranking section, change Section B to 10 questions..."
+                  value={refineText}
+                  onChange={e => setRefineText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}
+                />
+                <button
+                  onClick={handleRefine}
+                  disabled={refineText.trim().length < 5 || inferring}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 rounded-lg text-sm font-medium hover:bg-primary-100 disabled:opacity-50 transition-colors whitespace-nowrap"
+                >
+                  {inferring ? <Spinner className="h-3.5 w-3.5" /> : <Zap className="h-3.5 w-3.5" />}
+                  Refine
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-2 pt-2">
             <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">

@@ -55,6 +55,12 @@ const QUESTION_TYPE_ALIASES: Record<string, string> = {
   calculation: 'calculation',
   numerical: 'calculation',
   problem_solving: 'calculation',
+  ranking: 'ranking',
+  sjt: 'ranking',
+  situational_judgement: 'ranking',
+  situational_judgement_test: 'ranking',
+  scenario: 'scenario',
+  scenario_based: 'scenario',
 };
 
 function normalizeQuestionType(raw: unknown): string {
@@ -285,6 +291,8 @@ function getMaxTokensForType(questionType: string): number {
     case 'data_analysis': return 1400;
     case 'calculation': return 900;
     case 'short_answer': return 900;
+    case 'ranking': return 1400;
+    case 'scenario': return 1400;
     default: return 700;
   }
 }

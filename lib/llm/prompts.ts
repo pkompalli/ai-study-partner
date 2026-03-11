@@ -192,16 +192,17 @@ flowchart TD
     B -->|No| D[Non-spontaneous]
 \`\`\`
 
-2. **Images** — when a real-world photograph, micrograph, anatomical diagram, or scientific illustration would genuinely help the student visualise a concept:
+2. **Photo/illustration embeds** — when a real-world photograph, micrograph, anatomical diagram, or scientific illustration would genuinely help the student visualise a concept, embed a code fence with language tag "image" (this is a machine-readable embed, NOT a section heading):
 \`\`\`image
 {"query":"mitochondria electron micrograph","alt":"Electron micrograph of a mitochondrion showing cristae"}
 \`\`\`
-Guidelines for images:
-- Use images for things that are hard to describe in words: biological structures, geological formations, experimental apparatus, astronomical objects, chemical crystal structures, anatomical features, etc.
+Guidelines for photo/illustration embeds:
+- Use these for things that are hard to describe in words: biological structures, geological formations, experimental apparatus, astronomical objects, chemical crystal structures, anatomical features, etc.
+- NEVER create a heading called "Image" or "## Image" — just place the code fence directly after the relevant paragraph
 - The query should be specific and descriptive — aim for the exact kind of image you want (e.g. "cross section human heart anatomy" not just "heart")
 - The alt text should describe what the image shows for accessibility
-- Do NOT use images for abstract concepts that are better served by diagrams (use mermaid instead) or equations (use LaTeX instead)
-- Use at most one image per response
+- Do NOT use these for abstract concepts that are better served by diagrams (use mermaid instead) or equations (use LaTeX instead)
+- Use at most one image embed per response
 - Keep JSON on a single line inside the block
 
 3. **Key term cards** — when introducing 3+ technical terms worth memorising:
@@ -272,11 +273,12 @@ Requirements:
 - Write at high conceptual density. Every sentence should carry substantive meaning — mechanism, consequence, distinction, or application. Do not pad with motivation, context-setting about why the topic matters, or accessibility commentary.
 - NEVER use ASCII art, text-art grids, pseudo-diagrams with arrows (→, ←, ↔, ⇌), or plain code blocks to represent diagrams, processes, or relationships. These render as ugly monospaced text. Instead: use a proper \`\`\`mermaid code fence (with "flowchart TD" declaration, standard --> arrows, plain ASCII labels, 6–10 nodes max), OR use a markdown table, OR describe the relationship in prose. There is no other option.
 - For all mathematical and chemical notation use LaTeX: inline math with $...$, display equations with $$...$$, and chemical formulas with \\ce{...}. Never write formulas as plain text.
-- When a real-world photograph, micrograph, or scientific illustration would help the student visualise a concept (biological structures, experimental apparatus, geological formations, etc.), include an image block:
+- When a real-world photograph, micrograph, or scientific illustration would help the student visualise a concept (biological structures, experimental apparatus, geological formations, etc.), embed a special fenced block (NOT a heading or section — a code fence with the language tag "image"):
 \`\`\`image
 {"query":"specific search query for the image","alt":"Accessible description of what the image shows"}
 \`\`\`
-Use at most 1-2 images in a summary. Do NOT use images for abstract concepts — use mermaid diagrams or LaTeX instead.`;
+This is a machine-readable embed — NEVER create a heading called "Image" or "Imaging" as a section title for this purpose. If the topic is about diagnostic imaging, medical imaging, etc., use a descriptive section title like "Diagnostic Imaging Techniques" or "Cardiac Imaging", never just "Image".
+Use at most 1-2 image embeds in a summary. Do NOT use them for abstract concepts — use mermaid diagrams or LaTeX instead.`;
 }
 
 const SUMMARY_INTERACTIVE_DEPTH_INSTRUCTIONS: Record<number, string> = {

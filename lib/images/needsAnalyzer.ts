@@ -225,12 +225,13 @@ export function buildImageDirective(needs: ImageNeedsResult): string {
   }).join('\n\n')
 
   return `
-IMAGE REQUIREMENTS FOR THIS TOPIC:
-This topic requires specific visual aids. You MUST include the following image blocks at the indicated points in your response:
+IMAGE EMBED REQUIREMENTS FOR THIS TOPIC:
+This topic requires specific visual aids. You MUST include the following image code-fence embeds (language tag "image") at the indicated points in your response.
+CRITICAL: These are machine-readable code fences, NOT section headings. Do NOT create a heading called "Image". Just place the code fence inline after the relevant content paragraph.
 
 ${imageInstructions}
 
-Place each image block naturally within your explanation — after introducing the relevant concept, not at the very beginning or end. The image block must appear on its own line, not inside a paragraph.`
+Place each image code fence naturally within your explanation — after introducing the relevant concept, not at the very beginning or end. The code fence must appear on its own line, not inside a paragraph.`
 }
 
 // ─── Post-generation image insertion ────────────────────────────────────────
@@ -241,6 +242,12 @@ Place each image block naturally within your explanation — after introducing t
  */
 export function insertMissingImages(content: string, needs: ImageNeedsResult): string {
   if (!needs.needsImages || needs.imageNeeds.length === 0) return content
+
+  // Strip bare "image" headings the LLM may have emitted instead of code fences
+  content = content
+    .replace(/^#{1,4}\s+[Ii]mage\s*$/gm, '')
+    .replace(/^\s*[Ii]mage\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
 
   // Check which image blocks are already present
   const existingImageBlocks = content.match(/```image\n[\s\S]*?```/g) ?? []

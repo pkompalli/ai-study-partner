@@ -20,7 +20,7 @@ export interface ExamSection {
   id: string
   exam_format_id: string
   name: string
-  question_type: 'mcq' | 'short_answer' | 'long_answer' | 'data_analysis' | 'calculation'
+  question_type: 'mcq' | 'short_answer' | 'long_answer' | 'data_analysis' | 'calculation' | 'ranking' | 'scenario'
   num_questions: number
   marks_per_question?: number
   total_marks?: number

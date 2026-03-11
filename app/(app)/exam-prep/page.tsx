@@ -156,6 +156,18 @@ function PracticeSession() {
             rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
           >{question.question_text}</ReactMarkdown>
 
+          {/* Ranking/Scenario options list (non-selectable) */}
+          {!isMcq && question.options && question.options.length > 0 && (
+            <div className="space-y-1.5 bg-gray-50 rounded-lg p-3 border border-gray-200">
+              {question.options.map((opt, idx) => (
+                <div key={idx} className="flex items-start gap-2 text-sm text-gray-700">
+                  <span className="font-semibold text-gray-500 flex-shrink-0">{String.fromCharCode(65 + idx)}:</span>
+                  <span>{opt}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Answer input */}
           {isMcq ? (
             <div className="space-y-2">

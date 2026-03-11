@@ -30,8 +30,10 @@ export async function GET(
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const session = await getSessionById(id, user.id)
-    const messages = await getSessionMessages(id)
+    const [session, messages] = await Promise.all([
+      getSessionById(id, user.id),
+      getSessionMessages(id),
+    ])
     return NextResponse.json({ ...session, messages })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
@@ -59,35 +61,26 @@ export async function PATCH(
     }
 
     if (body.action === 'end') {
-      // End session and compile artifact
-      const session = await getSessionById(id, user.id)
-      const messages = await getSessionMessages(id)
+      // End session and compile artifact — fetch session + messages in parallel
+      const [session, messages] = await Promise.all([
+        getSessionById(id, user.id),
+        getSessionMessages(id),
+      ])
 
-      const courseCtx = await getCourseContext(session.course_id)
+      // Fetch course context, topic name, and chapter name in parallel
+      const svc = await createServiceClient()
+      const [courseCtx, topicResult, chapterResult] = await Promise.all([
+        getCourseContext(session.course_id),
+        session.topic_id
+          ? svc.from('topics').select('name').eq('id', session.topic_id).single()
+          : Promise.resolve({ data: null }),
+        session.chapter_id
+          ? svc.from('chapters').select('name').eq('id', session.chapter_id).single()
+          : Promise.resolve({ data: null }),
+      ])
       const courseName = courseCtx?.name ?? 'Course'
-
-      // Get topic and chapter names from DB
-      let topicName = 'General'
-      let chapterName: string | undefined
-
-      if (session.topic_id) {
-        const svc = await createServiceClient()
-        const { data: topic } = await svc
-          .from('topics')
-          .select('name')
-          .eq('id', session.topic_id)
-          .single()
-        if (topic) topicName = topic.name
-      }
-      if (session.chapter_id) {
-        const svc = await createServiceClient()
-        const { data: chapter } = await svc
-          .from('chapters')
-          .select('name')
-          .eq('id', session.chapter_id)
-          .single()
-        if (chapter) chapterName = chapter.name
-      }
+      const topicName = topicResult.data?.name ?? 'General'
+      const chapterName: string | undefined = chapterResult.data?.name ?? undefined
 
       const markdownContent = await compileArtifact({
         courseName,

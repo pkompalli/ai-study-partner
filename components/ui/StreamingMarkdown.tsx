@@ -11,6 +11,21 @@ import { InlineImage } from '@/components/session/InlineImage'
 import 'katex/contrib/mhchem'
 
 /**
+ * Strip spurious bare "image" headings/lines that the LLM sometimes emits
+ * instead of a proper ```image code fence. These render as ugly orphaned text.
+ */
+function stripBareImageHeadings(content: string): string {
+  if (!content) return content
+  // Remove lines that are just "## Image", "## image", "### Imaging", or bare "image" on a line
+  // but NOT lines inside code fences
+  return content
+    .replace(/^#{1,4}\s+[Ii]mage\s*$/gm, '')
+    .replace(/^\s*[Ii]mage\s*$/gm, '')
+    // Clean up resulting double blank lines
+    .replace(/\n{3,}/g, '\n\n')
+}
+
+/**
  * Normalise LaTeX delimiters so @streamdown/math can process everything.
  * Kept in sync with RichMessageContent.tsx — both must preprocess identically.
  */
@@ -132,7 +147,7 @@ export function StreamingMarkdown({ content, isStreaming, invert, className }: P
         plugins={PLUGINS}
         components={components}
       >
-        {preprocessLatex(content)}
+        {preprocessLatex(stripBareImageHeadings(content))}
       </Streamdown>
     </div>
   )

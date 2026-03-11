@@ -12,6 +12,18 @@ import { InlineImage } from './InlineImage';
 import 'katex/contrib/mhchem';
 
 /**
+ * Strip spurious bare "image" headings/lines that the LLM sometimes emits
+ * instead of a proper ```image code fence.
+ */
+function stripBareImageHeadings(content: string): string {
+  if (!content) return content;
+  return content
+    .replace(/^#{1,4}\s+[Ii]mage\s*$/gm, '')
+    .replace(/^\s*[Ii]mage\s*$/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+/**
  * Normalise LaTeX delimiters so remark-math can process everything:
  *  - \[...\]  →  $$...$$  (display math)
  *  - \(...\)  →  $...$    (inline math)
@@ -125,7 +137,7 @@ export function RichMessageContent({ content, invert }: Props) {
         remarkPlugins={[remarkMath, remarkGfm]}
         rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
         components={makeComponents(invert)}
-      >{preprocessLatex(content)}</ReactMarkdown>
+      >{preprocessLatex(stripBareImageHeadings(content))}</ReactMarkdown>
     </div>
   );
 }
