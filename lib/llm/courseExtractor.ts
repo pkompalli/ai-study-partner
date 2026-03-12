@@ -96,6 +96,34 @@ export async function refineCourseStructure(
   return parseStructureJSON(response);
 }
 
+/**
+ * Ensure every topic has at least 2 chapters.
+ * If the LLM returned topics with empty chapters, generate placeholder chapter names
+ * by splitting the topic name into logical sub-concepts.
+ */
+function ensureChapters(structure: CourseStructure): CourseStructure {
+  let fixed = false;
+  for (const subject of structure.subjects ?? []) {
+    for (const topic of subject.topics ?? []) {
+      if (!topic.chapters || topic.chapters.length === 0) {
+        // Auto-generate chapter names: "Introduction to <Topic>" and "Key Concepts in <Topic>"
+        // IDs and sort_order are assigned downstream when persisted to DB
+        (topic as { chapters: { name: string }[] }).chapters = [
+          { name: `Introduction to ${topic.name}` },
+          { name: `Key concepts in ${topic.name}` },
+          { name: `Applications of ${topic.name}` },
+        ];
+        fixed = true;
+        console.log(`[courseExtractor] auto-generated chapters for topic "${topic.name}"`);
+      }
+    }
+  }
+  if (fixed) {
+    console.log('[courseExtractor] some topics had empty chapters — auto-generated fallbacks');
+  }
+  return structure;
+}
+
 function parseStructureJSON(raw: string): CourseStructure {
   console.log('[courseExtractor] raw LLM response (first 500 chars):', raw.slice(0, 500));
   // Strip possible markdown code fences
@@ -103,7 +131,7 @@ function parseStructureJSON(raw: string): CourseStructure {
   try {
     const parsed = JSON.parse(cleaned);
     console.log('[courseExtractor] parsed subjects count:', (parsed as { subjects?: unknown[] })?.subjects?.length ?? 0);
-    return parsed as CourseStructure;
+    return ensureChapters(parsed as CourseStructure);
   } catch (e) {
     console.error('[courseExtractor] JSON parse failed:', e, '| cleaned (first 300):', cleaned.slice(0, 300));
     throw new Error('LLM returned invalid JSON for course structure');

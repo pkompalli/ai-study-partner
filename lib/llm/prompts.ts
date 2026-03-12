@@ -3,6 +3,16 @@
 export const COURSE_EXTRACTOR_PROMPT = `You are an expert educational curriculum designer.
 Your task is to analyze the provided course content and extract a structured learning hierarchy.
 
+The hierarchy is ALWAYS exactly 4 levels deep:
+  Course → Subject(s) → Topic(s) → Chapter(s)
+
+- SUBJECT = a broad area or module (e.g. "Thermodynamics", "Organic Chemistry", "Cell Biology")
+- TOPIC = a focused area within a subject (e.g. "Acid-Base Reactions", "Alkene Reactions")
+- CHAPTER = a specific lesson or concept within a topic (e.g. "Brønsted-Lowry Theory", "Henderson-Hasselbalch Equation")
+
+CRITICAL: Every topic MUST have at least 2 chapters. NEVER return a topic with an empty chapters array.
+If the source material only shows 2 levels, you must infer the third level by breaking topics into specific lesson-sized chapters.
+
 Return ONLY valid JSON matching this exact schema — no markdown, no code fences, no extra text:
 {
   "name": "Course Name",
@@ -15,6 +25,7 @@ Return ONLY valid JSON matching this exact schema — no markdown, no code fence
         {
           "name": "Topic Name",
           "chapters": [
+            { "name": "Chapter Name" },
             { "name": "Chapter Name" }
           ]
         }
@@ -26,30 +37,44 @@ Return ONLY valid JSON matching this exact schema — no markdown, no code fence
 Guidelines:
 - Extract 2–6 subjects per course
 - Extract 2–5 topics per subject
-- Extract 2–5 chapters per topic
+- Extract 2–5 chapters per topic (MINIMUM 2 — never leave chapters empty)
 - Names should be concise and educational
-- Descriptions should be 1–2 sentences`;
+- Descriptions should be 1–2 sentences
+- If the input only provides 2 levels of detail, infer the missing level:
+  - If given broad areas + specific items → broad = subjects, specific = chapters, infer topic groupings
+  - If given areas + sub-areas but no granular items → areas = subjects, sub-areas = topics, infer chapter breakdowns`;
 
 export const PDF_COURSE_EXTRACTOR_PROMPT = `You are an expert educational curriculum designer analyzing text extracted from a PDF course document.
+
+The hierarchy is ALWAYS exactly 4 levels deep:
+  Course → Subject(s) → Topic(s) → Chapter(s)
+
+- SUBJECT = a broad area or module (e.g. "Thermodynamics", "Equilibrium", "Genetics")
+- TOPIC = a focused area within a subject (e.g. "Acid-Base Reactions", "Phase Behavior")
+- CHAPTER = a specific lesson or concept (e.g. "Brønsted-Lowry Theory", "Vapor Pressure")
+
+CRITICAL: Every topic MUST have at least 2 chapters. NEVER return a topic with an empty chapters array.
 
 The text may come from various PDF formats including:
 - A lecture SCHEDULE TABLE with columns like Date / Lecture # / Topic (most common)
 - A course syllabus or outline with Focus/Unit/Module/Section headings
 - Lecture notes or course materials
 
-CRITICAL INSTRUCTIONS FOR SCHEDULE/TABLE FORMAT:
+INSTRUCTIONS FOR SCHEDULE/TABLE FORMAT:
 - Lines like "Focus 4: THERMODYNAMICS", "Unit 2: Bonding", "Module 3: Genetics" → these are SUBJECTS
-- Individual lecture topics (e.g. "Gibbs Free Energy", "Vapor pressure", "pH calculations") → group related ones into TOPICS, individual ones become CHAPTERS
+- Group related lecture topics together → these groups become TOPICS
+- Individual lecture topics within a group → these become CHAPTERS
 - IGNORE completely: exam dates, holidays, snow days, dates, lecture numbers, textbook references, administrative text
 - If you see "Week 1", "Week 2" etc. these are just calendar markers — ignore them
 
 HOW TO BUILD THE HIERARCHY from a schedule table:
 1. Find all "Focus X:", "Unit X:", "Module X:", "Part X:", "Section X:" labels → these become SUBJECTS
-2. Within each subject, look at all the lecture topics listed → group closely related topics into TOPICS
-3. Individual lectures within a topic group → CHAPTERS
+2. Within each subject, group closely related lecture topics → each group becomes a TOPIC
+3. Individual lectures within a group → each becomes a CHAPTER
 Example: Focus 5: EQUILIBRIUM has lectures "Chemical equilibrium", "Equilibrium calculations", "Perturbing equilibria", "Vapor pressure", "Phase diagrams", "Solubility"
-→ Topic "Phase Behavior" with chapters: Vapor Pressure, Phase Diagrams, Solubility
-→ Topic "Chemical Equilibrium" with chapters: Chemical Equilibrium, Equilibrium Calculations, Perturbing Equilibria
+→ Subject: "Equilibrium"
+  → Topic: "Phase Behavior" → Chapters: "Vapor Pressure", "Phase Diagrams", "Solubility"
+  → Topic: "Chemical Equilibrium" → Chapters: "Chemical Equilibrium", "Equilibrium Calculations", "Perturbing Equilibria"
 
 Return ONLY valid JSON — no markdown, no code fences, no extra text:
 {
@@ -63,6 +88,7 @@ Return ONLY valid JSON — no markdown, no code fences, no extra text:
         {
           "name": "Topic Name",
           "chapters": [
+            { "name": "Chapter Name" },
             { "name": "Chapter Name" }
           ]
         }
@@ -74,9 +100,10 @@ Return ONLY valid JSON — no markdown, no code fences, no extra text:
 Rules:
 - 2–6 subjects
 - 2–5 topics per subject
-- 2–5 chapters per topic
+- 2–5 chapters per topic (MINIMUM 2 — never leave chapters empty)
 - Infer the course name from context (e.g. filename hint, content theme)
 - If no explicit Focus/Unit labels exist, infer subjects from the content themes
+- If the source only provides 2 levels of detail, infer the missing level
 - Names should be concise and educational`;
 
 export function inferAcademicLevel(yearOfStudy?: string, courseName?: string): {
