@@ -146,9 +146,9 @@ interface ExamState {
   importPaper: (courseId: string) => Promise<ExamFormat>;
 
   // Session exam tab actions
-  loadSessionBatch: (formatId: string, topicId?: string, chapterId?: string) => Promise<void>;
-  loadMoreSessionBatch: (formatId: string, topicId?: string, chapterId?: string) => Promise<void>;
-  refreshBatchAtDifficulty: (formatId: string, difficulty: number, topicId?: string, chapterId?: string, force?: boolean) => Promise<void>;
+  loadSessionBatch: (formatId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<void>;
+  loadMoreSessionBatch: (formatId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<void>;
+  refreshBatchAtDifficulty: (formatId: string, difficulty: number, subjectId?: string, topicId?: string, chapterId?: string, force?: boolean) => Promise<void>;
   setSessionAnswerText: (questionId: string, text: string) => void;
   setSessionSelectedOption: (questionId: string, index: number) => void;
   submitSessionAnswer: (questionId: string, files?: File[]) => Promise<void>;
@@ -424,15 +424,15 @@ export const useExamStore = create<ExamState>((set, get) => ({
     set({ readiness: data ?? [] });
   },
 
-  loadSessionBatch: async (formatId, topicId, chapterId) => {
+  loadSessionBatch: async (formatId, subjectId, topicId, chapterId) => {
     set({ sessionBatchLoading: true, sessionBatchError: null });
     try {
       // Always generate fresh questions — never show pre-stored/imported questions verbatim.
-      // Scoped to chapter when set, otherwise topic.
+      // Scoped to chapter when set, otherwise topic, otherwise subject.
       const { examDifficulty, requestedCount } = get();
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions`,
-        { count: requestedCount, difficulty: examDifficulty, topicId, chapterId },
+        { count: requestedCount, difficulty: examDifficulty, subjectId, topicId, chapterId },
       );
       const questions = data.questions ?? [];
       set({
@@ -452,7 +452,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     }
   },
 
-  loadMoreSessionBatch: async (formatId, topicId, chapterId) => {
+  loadMoreSessionBatch: async (formatId, subjectId, topicId, chapterId) => {
     const { sessionBankAll, examDifficulty, requestedCount } = get();
 
     // Always generate new questions and append (force bypasses DB cache)
@@ -460,7 +460,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions`,
-        { count: requestedCount, difficulty: examDifficulty, topicId, chapterId, force: true },
+        { count: requestedCount, difficulty: examDifficulty, subjectId, topicId, chapterId, force: true },
       );
       const newQs = data.questions ?? [];
       const all = [...sessionBankAll, ...newQs];
@@ -475,7 +475,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     }
   },
 
-  refreshBatchAtDifficulty: async (formatId, newDifficulty, topicId, chapterId, force) => {
+  refreshBatchAtDifficulty: async (formatId, newDifficulty, subjectId, topicId, chapterId, force) => {
     const clamped = Math.max(1, Math.min(5, newDifficulty));
     const { requestedCount } = get();
     // Clear current batch immediately and show loading spinner
@@ -490,7 +490,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions`,
-        { count: requestedCount, difficulty: clamped, topicId, chapterId, ...(force ? { force: true } : {}) },
+        { count: requestedCount, difficulty: clamped, subjectId, topicId, chapterId, ...(force ? { force: true } : {}) },
       );
       const newQs = data.questions ?? [];
       set({

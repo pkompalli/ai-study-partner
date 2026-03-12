@@ -74,8 +74,11 @@ function PracticeSession() {
 
   if (questions.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Spinner className="h-6 w-6" />
+      <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-md shadow-primary-200">
+          <GraduationCap className="h-5 w-5 text-white animate-pulse" />
+        </div>
+        <p className="text-sm text-gray-400">Loading questions...</p>
       </div>
     );
   }
@@ -251,8 +254,14 @@ function PracticeSession() {
               disabled={isMarking || (isMcq ? localAnswer.selectedOptionIndex === undefined : !localAnswer.answerText.trim())}
               className="flex-1 flex items-center justify-center gap-2 py-2 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
-              {isMarking ? <Spinner className="h-3.5 w-3.5" /> : null}
-              Submit Answer
+              {isMarking ? (
+                <span className="inline-flex items-center gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="h-1 w-1 rounded-full bg-white" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </span>
+              ) : null}
+              {isMarking ? 'Marking...' : 'Submit Answer'}
             </button>
           )}
           {isMarked && (
@@ -410,8 +419,11 @@ export default function ExamPrepPage() {
 
       {/* Loading state */}
       {formatsLoading && (
-        <div className="flex justify-center py-8">
-          <Spinner className="h-6 w-6" />
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-200">
+            <GraduationCap className="h-6 w-6 text-white animate-pulse" />
+          </div>
+          <p className="text-sm text-gray-400">Loading exam formats...</p>
         </div>
       )}
 

@@ -34,12 +34,15 @@ import { checkRateLimit } from '@/lib/server/rateLimit'
 import { apiErrorResponse, getRequestId, logApiError } from '@/lib/server/apiError'
 
 // Helper to get topic and chapter names from IDs
-async function resolveNames(topicId?: string | null, chapterId?: string | null) {
+async function resolveNames(subjectId?: string | null, topicId?: string | null, chapterId?: string | null) {
   const svc = await createServiceClient()
   let topicName = 'General'
   let chapterName: string | undefined
 
-  if (topicId) {
+  if (subjectId) {
+    const { data } = await svc.from('subjects').select('name').eq('id', subjectId).single()
+    if (data) topicName = data.name
+  } else if (topicId) {
     const { data } = await svc.from('topics').select('name').eq('id', topicId).single()
     if (data) topicName = data.name
   }
@@ -67,6 +70,7 @@ export async function GET(
     const type = req.nextUrl.searchParams.get('type')
 
     const session = await getSessionById(id, user.id)
+    const subjectId = session.subject_id ?? undefined
     const topicId = session.topic_id ?? undefined
     const chapterId = session.chapter_id ?? undefined
 
@@ -84,7 +88,7 @@ export async function GET(
 
     if (type === 'cross-topic-cards') {
       if (!topicId) return NextResponse.json({ cards: [] })
-      const { topicName } = await resolveNames(topicId)
+      const { topicName } = await resolveNames(subjectId, topicId)
       const cards = await getCrossTopicCards(user.id, session.course_id, topicId, topicName)
       return NextResponse.json({ cards })
     }
@@ -100,7 +104,7 @@ export async function GET(
         })
       }
 
-      const { topicName, chapterName } = await resolveNames(topicId, chapterId)
+      const { topicName, chapterName } = await resolveNames(subjectId, topicId, chapterId)
       const level = inferAcademicLevel(courseCtx?.yearOfStudy, courseCtx?.name)
       const result = await generateResponsePills(lastAssistant.content, topicName, level.label, undefined, chapterName)
       return NextResponse.json({ sourceMessageId: lastAssistant.id ?? null, ...result })
@@ -170,7 +174,7 @@ export async function GET(
 
       // Cache miss — generate via LLM
       const courseCtx = await getCourseContext(session.course_id)
-      const { topicName, chapterName } = await resolveNames(topicId, chapterId)
+      const { topicName, chapterName } = await resolveNames(subjectId, topicId, chapterId)
 
       const generator = streamTopicSummaryGenerator({
         courseName: courseCtx?.name ?? 'Course',
@@ -283,6 +287,7 @@ export async function POST(
     }
 
     const session = await getSessionById(id, user.id)
+    const subjectId = session.subject_id ?? undefined
     const topicId = session.topic_id ?? undefined
     const chapterId = session.chapter_id ?? undefined
 
@@ -316,7 +321,7 @@ export async function POST(
     // ── quiz ───────────────────────────────────────────────────────────────────
     if (body.type === 'quiz') {
       const messages = await getSessionMessages(id)
-      const { topicName } = await resolveNames(topicId)
+      const { topicName } = await resolveNames(subjectId, topicId)
       const questions = await generateQuiz(topicName, messages)
       const quizId = await saveQuiz(id, user.id, topicId, questions)
       await saveMessage(id, 'assistant', 'Here is your quiz!', 'quiz', { quizId, questions })
@@ -327,7 +332,7 @@ export async function POST(
     if (body.type === 'flashcards') {
       const depth = typeof body.depth === 'number' ? body.depth : 0
       const messages = await getSessionMessages(id)
-      const { topicName, chapterName } = await resolveNames(topicId, chapterId)
+      const { topicName, chapterName } = await resolveNames(subjectId, topicId, chapterId)
       const flashcardContext = chapterName ? `${topicName} — ${chapterName}` : topicName
       const existingFronts = topicId ? await getTopicCardFronts(user.id, topicId, chapterId) : []
       const newCards = await generateFlashcards(flashcardContext, messages, existingFronts)
@@ -345,7 +350,7 @@ export async function POST(
 
     // ── videos ─────────────────────────────────────────────────────────────────
     if (body.type === 'videos') {
-      const { topicName, chapterName } = await resolveNames(topicId, chapterId)
+      const { topicName, chapterName } = await resolveNames(subjectId, topicId, chapterId)
       const videos = await fetchVideoLinks(topicName, chapterName)
       await saveMessage(id, 'assistant', 'Here are some helpful videos!', 'videos', { videos })
       return NextResponse.json({ videos })
@@ -357,7 +362,7 @@ export async function POST(
       if (messageIndex === undefined) return NextResponse.json({ error: 'messageIndex required' }, { status: 400 })
 
       const courseCtx = await getCourseContext(session.course_id)
-      const { topicName, chapterName } = await resolveNames(topicId, chapterId)
+      const { topicName, chapterName } = await resolveNames(subjectId, topicId, chapterId)
 
       const allMessages = await getSessionMessages(id)
       const visibleMessages = allMessages.filter((m) => m.role !== 'system')
@@ -408,7 +413,7 @@ export async function POST(
     if (!content) return NextResponse.json({ error: 'content required' }, { status: 400 })
 
     const courseCtx = await getCourseContext(session.course_id)
-    const { topicName, chapterName } = await resolveNames(topicId, chapterId)
+    const { topicName, chapterName } = await resolveNames(subjectId, topicId, chapterId)
 
     await saveMessage(id, 'user', content)
     const history = await getSessionMessages(id)

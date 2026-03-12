@@ -107,8 +107,13 @@ function ExamPrepTab({
   if (!format && sessionBatch.length === 0) {
     if (sessionBatchLoading) {
       return (
-        <div className="flex-1 flex items-center justify-center">
-          <Spinner className="h-6 w-6 text-primary-400" />
+        <div className="flex-1 flex flex-col items-center justify-center gap-3">
+          <div className="relative">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-200">
+              <GraduationCap className="h-6 w-6 text-white animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm font-medium text-gray-500">Loading exam format...</p>
         </div>
       );
     }
@@ -127,8 +132,29 @@ function ExamPrepTab({
 
   if (sessionBatchLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <Spinner className="h-6 w-6 text-primary-400" />
+      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <div className="relative">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center shadow-lg shadow-primary-200">
+            <GraduationCap className="h-7 w-7 text-white" />
+          </div>
+          <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-amber-400 flex items-center justify-center shadow">
+            <Lightbulb className="h-2.5 w-2.5 text-white" />
+          </div>
+          <div className="absolute inset-0 rounded-2xl bg-primary-400/20 animate-ping" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-gray-700">Generating exam questions</p>
+          <p className="text-xs text-gray-400">Tailoring to your difficulty level...</p>
+        </div>
+        <div className="flex gap-1">
+          {[0, 1, 2].map(i => (
+            <span
+              key={i}
+              className="h-1.5 w-1.5 rounded-full bg-primary-400"
+              style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }}
+            />
+          ))}
+        </div>
       </div>
     );
   }
@@ -191,8 +217,14 @@ function ExamPrepTab({
             disabled={sessionBatchGenerating}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-60 transition-colors"
           >
-            {sessionBatchGenerating ? <Spinner className="h-3 w-3" /> : null}
-            {requestedCount} more ↓
+            {sessionBatchGenerating ? (
+              <span className="inline-flex items-center gap-0.5">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="h-1 w-1 rounded-full bg-white" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+            ) : null}
+            {sessionBatchGenerating ? 'Generating...' : `${requestedCount} more ↓`}
           </button>
         </div>
       </div>
@@ -447,8 +479,14 @@ function ExamQuestionCard({
               disabled={isHintLoading || (hint?.count ?? 0) >= 2}
               className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors flex-shrink-0"
             >
-              {isHintLoading ? <Spinner className="h-3 w-3" /> : <Lightbulb className="h-3 w-3 text-amber-500" />}
-              {(hint?.count ?? 0) > 0 ? `Hint (${hint!.count}/2)` : 'Hint'}
+              {isHintLoading ? (
+                <span className="inline-flex items-center gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="h-0.5 w-0.5 rounded-full bg-amber-400" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </span>
+              ) : <Lightbulb className="h-3 w-3 text-amber-500" />}
+              {isHintLoading ? 'Thinking...' : (hint?.count ?? 0) > 0 ? `Hint (${hint!.count}/2)` : 'Hint'}
             </button>
             <button
               onClick={() => fullAnswer ? setShowFullAnswer(s => !s) : onFetchFullAnswer()}
@@ -456,16 +494,28 @@ function ExamQuestionCard({
               className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors flex-shrink-0"
               title="Show or hide the complete worked answer"
             >
-              {isFullAnswerLoading ? <Spinner className="h-3 w-3" /> : <BookMarked className="h-3 w-3 text-emerald-600" />}
-              {fullAnswer ? (showFullAnswer ? 'Hide Answer' : 'Show Answer') : 'Show Answer'}
+              {isFullAnswerLoading ? (
+                <span className="inline-flex items-center gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="h-0.5 w-0.5 rounded-full bg-emerald-400" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </span>
+              ) : <BookMarked className="h-3 w-3 text-emerald-600" />}
+              {isFullAnswerLoading ? 'Loading...' : fullAnswer ? (showFullAnswer ? 'Hide Answer' : 'Show Answer') : 'Show Answer'}
             </button>
             <button
               onClick={() => onSubmit(answerFiles.length > 0 ? answerFiles : undefined)}
               disabled={isMarking || !canSubmit}
               className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
             >
-              {isMarking ? <Spinner className="h-3 w-3" /> : null}
-              Submit Answer
+              {isMarking ? (
+                <span className="inline-flex items-center gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="h-1 w-1 rounded-full bg-white" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </span>
+              ) : null}
+              {isMarking ? 'Marking...' : 'Submit Answer'}
             </button>
           </div>
         )}
@@ -477,8 +527,14 @@ function ExamQuestionCard({
             disabled={isFullAnswerLoading}
             className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 transition-colors"
           >
-            {isFullAnswerLoading ? <Spinner className="h-3 w-3" /> : <BookMarked className="h-3 w-3" />}
-            {fullAnswer ? (showFullAnswer ? 'Hide Model Answer' : 'Show Model Answer') : 'Show Model Answer'}
+            {isFullAnswerLoading ? (
+              <span className="inline-flex items-center gap-0.5">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="h-0.5 w-0.5 rounded-full bg-emerald-400" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+            ) : <BookMarked className="h-3 w-3" />}
+            {isFullAnswerLoading ? 'Preparing answer...' : fullAnswer ? (showFullAnswer ? 'Hide Model Answer' : 'Show Model Answer') : 'Show Model Answer'}
           </button>
         )}
       </div>
@@ -560,6 +616,8 @@ export default function SessionPage() {
           persistExamState(`chapter_${prevSession.chapter_id}`);
         } else if (prevSession?.topic_id) {
           persistExamState(`topic_${prevSession.topic_id}`);
+        } else if (prevSession?.subject_id) {
+          persistExamState(`subject_${prevSession.subject_id}`);
         }
       }
     }
@@ -586,11 +644,13 @@ export default function SessionPage() {
         fetchFormats(session.course_id).catch(() => {});
         router.prefetch(`/courses/${session.course_id}`);
       }
-      // Restore exam state — chapter-specific key first, then topic, then session
+      // Restore exam state — chapter-specific key first, then topic, then subject, then session
       const chapterKey = session?.chapter_id ? `chapter_${session.chapter_id}` : null;
       const topicKey = session?.topic_id ? `topic_${session.topic_id}` : null;
+      const subjectKey = session?.subject_id ? `subject_${session.subject_id}` : null;
       (chapterKey ? restoreExamState(chapterKey) : false)
         || (topicKey ? restoreExamState(topicKey) : false)
+        || (subjectKey ? restoreExamState(subjectKey) : false)
         || restoreExamState(id);
     });
 
@@ -606,11 +666,13 @@ export default function SessionPage() {
       if (sessionBatch.length > 0) {
         persistExamState(id);
         const session = useSessionStore.getState().activeSession;
-        // Persist under chapter key (most specific) or topic key
+        // Persist under most specific key: chapter > topic > subject
         if (session?.chapter_id) {
           persistExamState(`chapter_${session.chapter_id}`);
         } else if (session?.topic_id) {
           persistExamState(`topic_${session.topic_id}`);
+        } else if (session?.subject_id) {
+          persistExamState(`subject_${session.subject_id}`);
         }
       }
       clearSessionExam();
@@ -686,15 +748,15 @@ export default function SessionPage() {
   };
 
   const handleLoadExamBatch = async (formatId: string) => {
-    await loadSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
+    await loadSessionBatch(formatId, activeSession?.subject_id, activeSession?.topic_id, activeSession?.chapter_id);
   };
 
   const handleLoadMoreExamBatch = async (formatId: string) => {
-    await loadMoreSessionBatch(formatId, activeSession?.topic_id, activeSession?.chapter_id);
+    await loadMoreSessionBatch(formatId, activeSession?.subject_id, activeSession?.topic_id, activeSession?.chapter_id);
   };
 
   const handleRefreshBatch = async (formatId: string, difficulty: number, force?: boolean) => {
-    await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.topic_id, activeSession?.chapter_id, force);
+    await refreshBatchAtDifficulty(formatId, difficulty, activeSession?.subject_id, activeSession?.topic_id, activeSession?.chapter_id, force);
   };
 
   const handleSummaryDepthChange = (newDepth: number) => {
@@ -779,8 +841,8 @@ export default function SessionPage() {
             </>
           ) : (
             <>
-              <div className="h-4 w-48 bg-gray-200 rounded animate-pulse mb-1" />
-              <div className="h-3 w-24 bg-gray-100 rounded animate-pulse" />
+              <div className="h-4 w-48 rounded mb-1 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite]" />
+              <div className="h-3 w-24 rounded bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.2s]" />
             </>
           )}
         </div>
@@ -836,13 +898,21 @@ export default function SessionPage() {
                     />
                   )}
                   {!hasSummary && visibleMessages.length === 0 && (
-                    <div className="py-6 space-y-4">
-                      <div className="h-5 w-3/4 bg-gray-200 rounded animate-pulse" />
-                      <div className="h-4 w-full bg-gray-100 rounded animate-pulse" />
-                      <div className="h-4 w-5/6 bg-gray-100 rounded animate-pulse" />
-                      <div className="h-4 w-2/3 bg-gray-100 rounded animate-pulse" />
-                      <div className="h-4 w-4/5 bg-gray-100 rounded animate-pulse" />
-                      <div className="h-4 w-1/2 bg-gray-100 rounded animate-pulse" />
+                    <div className="py-8 space-y-5">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center">
+                          <Lightbulb className="h-4 w-4 text-primary-400 animate-pulse" />
+                        </div>
+                        <span className="text-sm text-gray-400 font-medium">Generating your lesson...</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="h-5 w-3/4 rounded bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite]" />
+                        <div className="h-4 w-full rounded bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.1s]" />
+                        <div className="h-4 w-5/6 rounded bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.2s]" />
+                        <div className="h-4 w-2/3 rounded bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.3s]" />
+                        <div className="h-4 w-4/5 rounded bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.4s]" />
+                        <div className="h-4 w-1/2 rounded bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.5s]" />
+                      </div>
                     </div>
                   )}
                   {(visibleMessages.length > 0 || (isStreaming && regeneratingIndex === null)) && (
@@ -1002,14 +1072,20 @@ export default function SessionPage() {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-2">
                     {pillsLoading || summaryStreaming ? (
-                      <div className="w-full space-y-3 px-1">
-                        <div className="h-4 w-5/6 bg-orange-100 rounded animate-pulse" />
-                        <div className="h-8 w-full bg-orange-50 rounded-lg animate-pulse" />
-                        <div className="h-8 w-full bg-orange-50 rounded-lg animate-pulse" />
-                        <div className="h-8 w-full bg-orange-50 rounded-lg animate-pulse" />
+                      <div className="w-full space-y-3 px-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Lightbulb className="h-3.5 w-3.5 text-orange-300 animate-pulse" />
+                          <span className="text-xs text-orange-400 font-medium">Preparing questions...</span>
+                        </div>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} className="h-8 w-full rounded-lg bg-gradient-to-r from-orange-100 via-orange-50 to-orange-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite]" style={{ animationDelay: `${i * 0.1}s` }} />
+                        ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-gray-400 text-center leading-relaxed">Questions appear here<br/>as you study.</p>
+                      <div className="flex flex-col items-center gap-1.5">
+                        <Lightbulb className="h-4 w-4 text-orange-200" />
+                        <p className="text-xs text-gray-400 text-center leading-relaxed">Questions appear here<br/>as you study.</p>
+                      </div>
                     )}
                   </div>
                 )}

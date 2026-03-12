@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { ImageIcon } from 'lucide-react'
 
 type ImageData =
   | { type: 'found'; thumbUrl: string; title: string; attribution: string; license: string; score: number }
@@ -39,8 +40,14 @@ export function InlineImage({ query, alt }: Props) {
 
   if (loading) {
     return (
-      <div className="my-4 rounded-xl bg-slate-50 animate-pulse flex items-center justify-center h-48">
-        <span className="text-sm text-slate-400">Finding image...</span>
+      <div className="my-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center h-48 gap-2">
+        <div className="relative">
+          <ImageIcon className="h-6 w-6 text-slate-300" />
+          <div className="absolute inset-0 animate-ping opacity-30">
+            <ImageIcon className="h-6 w-6 text-slate-300" />
+          </div>
+        </div>
+        <span className="text-xs font-medium text-slate-400">Finding illustration...</span>
       </div>
     )
   }

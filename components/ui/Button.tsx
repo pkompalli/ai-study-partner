@@ -42,10 +42,11 @@ export function Button({
       {...props}
     >
       {loading && (
-        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
+        <span className="inline-flex items-center gap-0.5">
+          {[0, 1, 2].map(i => (
+            <span key={i} className="h-1.5 w-1.5 rounded-full bg-current opacity-60" style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+          ))}
+        </span>
       )}
       {children}
     </button>

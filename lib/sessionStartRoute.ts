@@ -1,12 +1,20 @@
 export function buildSessionStartRoute(params: {
   courseId: string;
-  topicId: string;
+  subjectId?: string;
+  topicId?: string;
   chapterId?: string;
 }): string {
   const search = new URLSearchParams({
     courseId: params.courseId,
-    topicId: params.topicId,
   });
+
+  if (params.subjectId) {
+    search.set('subjectId', params.subjectId);
+  }
+
+  if (params.topicId) {
+    search.set('topicId', params.topicId);
+  }
 
   if (params.chapterId) {
     search.set('chapterId', params.chapterId);

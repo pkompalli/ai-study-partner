@@ -31,7 +31,7 @@ interface SessionState {
   flashcardsLoading: boolean;
   crossTopicCards: CrossTopicCard[];
 
-  startSession: (courseId: string, topicId?: string, chapterId?: string) => Promise<string>;
+  startSession: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<string>;
   loadSession: (sessionId: string) => Promise<void>;
   sendMessage: (content: string, depth?: number) => Promise<void>;
   requestQuiz: () => Promise<void>;
@@ -66,7 +66,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   flashcardsLoading: false,
   crossTopicCards: [],
 
-  startSession: async (courseId, topicId, chapterId) => {
+  startSession: async (courseId, subjectId, topicId, chapterId) => {
     // Clear stale data from previous session before navigating so the new
     // page doesn't briefly render old topic's questions/cards
     set({
@@ -76,7 +76,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       summaryStreamingContent: '',
       activeFlashcards: null,
     });
-    const { data } = await api.post<{ id: string }>('/api/sessions', { courseId, topicId, chapterId });
+    const { data } = await api.post<{ id: string }>('/api/sessions', { courseId, subjectId, topicId, chapterId });
     return data.id;
   },
 

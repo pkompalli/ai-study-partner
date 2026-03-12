@@ -75,20 +75,30 @@ export function CheckPanel({ questions, isLoading, resetKey }: CheckPanelProps) 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-3 py-3">
         {isLoading ? (
-          <div className="animate-pulse space-y-3">
-            <div className="h-3 bg-orange-100 rounded w-5/6" />
-            <div className="h-3 bg-orange-100 rounded w-3/4" />
-            <div className="space-y-2 mt-4">
-              <div className="h-8 bg-gray-100 rounded-lg" />
-              <div className="h-8 bg-gray-100 rounded-lg" />
-              <div className="h-8 bg-gray-100 rounded-lg" />
-              <div className="h-8 bg-gray-100 rounded-lg" />
+          <div className="flex flex-col items-center justify-center py-8 gap-3">
+            <div className="relative">
+              <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-orange-400 to-amber-500 flex items-center justify-center shadow-sm">
+                <Lightbulb className="h-4 w-4 text-white animate-pulse" />
+              </div>
+            </div>
+            <p className="text-xs font-medium text-orange-600">Preparing check questions...</p>
+            <div className="w-full space-y-2">
+              <div className="h-3 rounded bg-gradient-to-r from-orange-100 via-orange-50 to-orange-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite] w-5/6" />
+              <div className="h-3 rounded bg-gradient-to-r from-orange-100 via-orange-50 to-orange-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite_0.1s] w-3/4" />
+              <div className="space-y-1.5 mt-3">
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className="h-8 rounded-lg bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 bg-[length:200%_100%] animate-[shimmer_1.5s_ease-in-out_infinite]" style={{ animationDelay: `${i * 0.1}s` }} />
+                ))}
+              </div>
             </div>
           </div>
         ) : total === 0 ? (
-          <p className="text-xs text-gray-400 text-center pt-6 leading-relaxed px-2">
-            Comprehension questions will appear once content loads.
-          </p>
+          <div className="flex flex-col items-center justify-center pt-8 pb-4 gap-2 px-2">
+            <Lightbulb className="h-5 w-5 text-orange-200" />
+            <p className="text-xs text-gray-400 text-center leading-relaxed">
+              Comprehension questions will appear once content loads.
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {/* Progress dots */}

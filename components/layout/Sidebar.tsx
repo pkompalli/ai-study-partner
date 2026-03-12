@@ -94,7 +94,14 @@ export function Sidebar() {
 
         {/* Course list */}
         {loading && courses.length === 0 ? (
-          <div className="px-4 py-3 text-xs text-primary-300">Loading courses…</div>
+          <div className="px-4 py-3 flex items-center gap-2">
+            <span className="inline-flex items-center gap-0.5">
+              {[0, 1, 2].map(i => (
+                <span key={i} className="h-1 w-1 rounded-full bg-primary-400" style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </span>
+            <span className="text-xs text-primary-300">Loading your courses</span>
+          </div>
         ) : courses.length === 0 ? (
           <div className="px-4 py-3 text-xs text-primary-300 leading-relaxed">
             No courses yet.{' '}
@@ -154,6 +161,7 @@ export function Sidebar() {
                     <SidebarCourseTree
                       subjects={course.subjects}
                       courseId={course.id}
+                      activeSubjectId={activeSession?.course_id === course.id ? activeSession?.subject_id : undefined}
                       activeTopicId={activeSession?.course_id === course.id ? activeSession?.topic_id : undefined}
                       activeChapterId={activeSession?.course_id === course.id ? activeSession?.chapter_id : undefined}
                       onNavigate={closeMobile}

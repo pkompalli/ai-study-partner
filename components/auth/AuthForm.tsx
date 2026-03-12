@@ -84,7 +84,7 @@ export function AuthForm() {
           className="w-full"
           disabled={loading}
         >
-          {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
+          {loading ? 'Signing you in...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
         </Button>
       </form>
 

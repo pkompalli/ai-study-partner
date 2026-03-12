@@ -1,6 +1,5 @@
 'use client'
-import { Minus, Plus, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
-import { Spinner } from '@/components/ui/Spinner';
+import { Minus, Plus, ChevronDown, ChevronUp, RotateCcw, BookOpen, Sparkles } from 'lucide-react';
 import { StreamingMarkdown } from '@/components/ui/StreamingMarkdown';
 
 const DEPTH_LABELS: Record<number, string> = {
@@ -44,7 +43,12 @@ export function TopicSummary({
           Topic Overview
         </button>
         <div className="flex items-center gap-2">
-          {isStreaming && <Spinner className="h-3.5 w-3.5 text-primary-500" />}
+          {isStreaming && (
+            <div className="flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-primary-500 animate-pulse" />
+              <span className="text-[10px] text-primary-500 font-medium">Writing</span>
+            </div>
+          )}
           <span className="text-xs text-primary-500 font-medium">{DEPTH_LABELS[depth]}</span>
           <button
             onClick={onRefresh}
@@ -79,8 +83,28 @@ export function TopicSummary({
       {!collapsed && (
         <div className="px-4 py-4">
           {isStreaming && !streamingContent ? (
-            <div className="flex items-center justify-center py-8">
-              <Spinner className="h-6 w-6 text-primary-400" />
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <div className="relative">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center shadow-md shadow-primary-200">
+                  <BookOpen className="h-5 w-5 text-white" />
+                </div>
+                <div className="absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-amber-400 flex items-center justify-center">
+                  <Sparkles className="h-2 w-2 text-white" />
+                </div>
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-primary-700">Crafting your lesson</p>
+                <p className="text-xs text-gray-400">Personalizing depth level {depth}...</p>
+              </div>
+              <div className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <span
+                    key={i}
+                    className="h-1.5 w-1.5 rounded-full bg-primary-400"
+                    style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }}
+                  />
+                ))}
+              </div>
             </div>
           ) : isStreaming ? (
             /* Block-memoized markdown during streaming — smooth, no full re-render */

@@ -4,7 +4,7 @@ export async function getSessionsByCourse(courseId: string, userId: string) {
   const supabase = await createServiceClient()
   const { data, error } = await supabase
     .from('study_sessions')
-    .select('id, course_id, topic_id, chapter_id, title, status, started_at, ended_at')
+    .select('id, course_id, subject_id, topic_id, chapter_id, title, status, started_at, ended_at')
     .eq('course_id', courseId)
     .eq('user_id', userId)
     .order('started_at', { ascending: false })
@@ -16,7 +16,7 @@ export async function getSessionsByUser(userId: string) {
   const supabase = await createServiceClient()
   const { data, error } = await supabase
     .from('study_sessions')
-    .select('id, course_id, topic_id, chapter_id, title, status, started_at, ended_at')
+    .select('id, course_id, subject_id, topic_id, chapter_id, title, status, started_at, ended_at')
     .eq('user_id', userId)
     .order('started_at', { ascending: false })
   if (error) throw error
@@ -38,6 +38,7 @@ export async function getSessionById(id: string, userId: string) {
 export async function findActiveSession(
   userId: string,
   courseId: string,
+  subjectId?: string,
   topicId?: string,
   chapterId?: string,
 ) {
@@ -48,6 +49,12 @@ export async function findActiveSession(
     .eq('user_id', userId)
     .eq('course_id', courseId)
     .eq('status', 'active')
+
+  if (subjectId) {
+    query = query.eq('subject_id', subjectId)
+  } else {
+    query = query.is('subject_id', null)
+  }
 
   if (topicId) {
     query = query.eq('topic_id', topicId)
@@ -74,6 +81,7 @@ export async function createSession(
   userId: string,
   input: {
     course_id: string
+    subject_id?: string
     topic_id?: string
     chapter_id?: string
     title?: string

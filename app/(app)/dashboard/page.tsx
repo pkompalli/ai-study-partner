@@ -27,7 +27,16 @@ function ReadinessSection({ courseId }: { courseId: string }) {
       .finally(() => setLoading(false));
   }, [courseId]);
 
-  if (loading) return <div className="pt-2"><Spinner className="h-3.5 w-3.5 text-gray-300" /></div>;
+  if (loading) return (
+    <div className="pt-2 flex items-center gap-1.5">
+      <span className="inline-flex items-center gap-0.5">
+        {[0, 1, 2].map(i => (
+          <span key={i} className="h-1 w-1 rounded-full bg-gray-300" style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+        ))}
+      </span>
+      <span className="text-xs text-gray-300">Loading scores</span>
+    </div>
+  );
   if (readiness.length === 0) return <p className="pt-2 text-xs text-gray-400 italic">No scores yet — start practising</p>;
 
   return (
@@ -125,8 +134,14 @@ function CourseCard({
             disabled={starting}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-60 transition-colors"
           >
-            {starting ? <Spinner className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
-            Study
+            {starting ? (
+              <span className="inline-flex items-center gap-0.5">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="h-1 w-1 rounded-full bg-white" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+            ) : <Play className="h-3 w-3 fill-current" />}
+            {starting ? 'Starting...' : 'Study'}
           </button>
 
           {isExamPrep && (

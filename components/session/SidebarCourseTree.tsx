@@ -1,19 +1,34 @@
 'use client'
 import { useState, useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { Subject } from '@/types';
 import { buildSessionStartRoute } from '@/lib/sessionStartRoute';
 
 interface SidebarCourseTreeProps {
   subjects: Subject[];
   courseId: string;
+  activeSubjectId?: string;
   activeTopicId?: string;
   activeChapterId?: string;
   onNavigate?: () => void;
 }
 
-export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeChapterId, onNavigate }: SidebarCourseTreeProps) {
+function PulsingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5 flex-shrink-0">
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className="block h-1 w-1 rounded-full bg-primary-300"
+          style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.15}s` }}
+        />
+      ))}
+    </span>
+  );
+}
+
+export function SidebarCourseTree({ subjects, courseId, activeSubjectId, activeTopicId, activeChapterId, onNavigate }: SidebarCourseTreeProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -69,10 +84,11 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
   };
 
   const handleSubjectNavigate = (subject: Subject) => {
-    // Navigate to the first topic under this subject
-    const firstTopic = subject.topics[0];
-    if (!firstTopic) return;
-    handleNavigate(firstTopic.id);
+    // Navigate to a subject-level session (covers all topics under this subject)
+    onNavigate?.();
+    routeKeyAtNavigateRef.current = routeKey;
+    setStartingSessionKey(`subject:${subject.id}`);
+    router.push(buildSessionStartRoute({ courseId, subjectId: subject.id }));
     // Also expand the subject to show its topics
     setExpanded(prev => new Set([...prev, subject.id]));
   };
@@ -80,9 +96,9 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
   return (
     <div className="space-y-0.5">
       {subjects.map(subject => {
-        // Subject is "active" when the current session's topic belongs to it
-        const isSubjectActive = subject.topics.some(t => t.id === activeTopicId);
-        const isSubjectStarting = subject.topics.some(t => startingSessionKey === t.id);
+        // Subject is "active" when this subject is the session's subject, or when the session's topic belongs to it
+        const isSubjectActive = subject.id === activeSubjectId || subject.topics.some(t => t.id === activeTopicId);
+        const isSubjectStarting = startingSessionKey === `subject:${subject.id}`;
         return (
         <div key={subject.id}>
           <div className="flex items-center">
@@ -106,7 +122,7 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
             >
               <span className="flex items-center gap-2">
                 <span className="truncate">{subject.name}</span>
-                {isSubjectStarting && <Loader2 className="h-3 w-3 animate-spin text-primary-300 flex-shrink-0" />}
+                {isSubjectStarting && <PulsingDots />}
               </span>
             </button>
           </div>
@@ -128,7 +144,7 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
                     >
                       <span className="flex items-center gap-2">
                         <span className="truncate">{topic.name}</span>
-                        {isTopicStarting && <Loader2 className="h-3 w-3 animate-spin text-primary-300 flex-shrink-0" />}
+                        {isTopicStarting && <PulsingDots />}
                       </span>
                     </button>
                     <div className="ml-3 space-y-0.5">
@@ -148,7 +164,7 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
                           >
                             <span className="flex items-center gap-2">
                               <span className="truncate">• {chapter.name}</span>
-                              {isChapterStarting && <Loader2 className="h-3 w-3 animate-spin text-primary-300 flex-shrink-0" />}
+                              {isChapterStarting && <PulsingDots />}
                             </span>
                           </button>
                         );

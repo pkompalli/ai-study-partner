@@ -78,7 +78,12 @@ function makeComponents(invert?: boolean, isStreaming?: boolean): Components {
 
       if (lang === 'mermaid') {
         if (isStreaming) {
-          return <div className="min-h-24 rounded-2xl bg-slate-50 animate-pulse my-4" />
+          return (
+            <div className="min-h-24 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 my-4 flex items-center justify-center gap-2">
+              <svg className="h-4 w-4 text-slate-300 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/></svg>
+              <span className="text-xs text-slate-400">Building diagram...</span>
+            </div>
+          )
         }
         return <InlineMermaid code={raw} />
       }
@@ -103,7 +108,12 @@ function makeComponents(invert?: boolean, isStreaming?: boolean): Components {
 
       if (lang === 'image') {
         if (isStreaming) {
-          return <div className="min-h-48 rounded-2xl bg-slate-50 animate-pulse my-4" />
+          return (
+            <div className="min-h-48 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 my-4 flex flex-col items-center justify-center gap-2">
+              <svg className="h-5 w-5 text-slate-300 animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span className="text-xs text-slate-400">Preparing illustration...</span>
+            </div>
+          )
         }
         try {
           const data = JSON.parse(raw)

@@ -57,6 +57,7 @@ export async function POST(
     let body: {
       count?: number
       difficulty?: number
+      subjectId?: string
       topicId?: string
       chapterId?: string
       batch?: boolean
@@ -87,7 +88,7 @@ export async function POST(
 
     // Batch mode: generate a fixed count distributed across sections
     if (body.count !== undefined || body.batch) {
-      const { count = 5, difficulty = 3, topicId, chapterId } = body
+      const { count = 5, difficulty = 3, subjectId, topicId, chapterId } = body
 
       let topics: Array<{ id: string; name: string; subjectName?: string; chapterName?: string; priorChapters?: string[]; laterChapters?: string[]; chapterContent?: string }>
       if (chapterId) {
@@ -177,6 +178,25 @@ export async function POST(
         } else {
           topics = allTopics
         }
+      } else if (subjectId) {
+        // Subject-level generation — include all topics under this subject
+        const subjectTopics = courseSubjects.find(s => s.id === subjectId)?.topics ?? []
+        if (subjectTopics.length > 0) {
+          const subjectTopicIds = new Set(subjectTopics.map(t => t.id))
+          const otherTopicNames = allTopics
+            .filter(t => !subjectTopicIds.has(t.id))
+            .map(t => t.name)
+
+          console.log(`[examQ route] subject-level: subjectId=${subjectId}, topics=[${subjectTopics.map(t => t.name).join(', ')}], forbidden=[${otherTopicNames.join(', ')}]`)
+
+          topics = subjectTopics.map(t => ({
+            id: t.id,
+            name: t.name,
+            subjectName: courseSubjects.find(s => s.id === subjectId)?.name,
+          }))
+        } else {
+          topics = allTopics
+        }
       } else {
         topics = allTopics
       }
@@ -185,7 +205,7 @@ export async function POST(
 
       // Check DB cache: if we already have questions for this topic+difficulty, return them
       // Skip cache if force=true (explicit regenerate)
-      const scopeTopicId = topicId ?? chapterId
+      const scopeTopicId = topicId ?? chapterId ?? subjectId
       if (scopeTopicId && !body.force) {
         const cached = await getExamQuestionsByTopicAndDepth(id, scopeTopicId, clampedDifficulty, Math.min(count, 20))
         if (cached.length > 0) {

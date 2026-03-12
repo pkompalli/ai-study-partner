@@ -67,10 +67,13 @@ export async function PATCH(
         getSessionMessages(id),
       ])
 
-      // Fetch course context, topic name, and chapter name in parallel
+      // Fetch course context, subject name, topic name, and chapter name in parallel
       const svc = await createServiceClient()
-      const [courseCtx, topicResult, chapterResult] = await Promise.all([
+      const [courseCtx, subjectResult, topicResult, chapterResult] = await Promise.all([
         getCourseContext(session.course_id),
+        session.subject_id
+          ? svc.from('subjects').select('name').eq('id', session.subject_id).single()
+          : Promise.resolve({ data: null }),
         session.topic_id
           ? svc.from('topics').select('name').eq('id', session.topic_id).single()
           : Promise.resolve({ data: null }),
@@ -79,7 +82,7 @@ export async function PATCH(
           : Promise.resolve({ data: null }),
       ])
       const courseName = courseCtx?.name ?? 'Course'
-      const topicName = topicResult.data?.name ?? 'General'
+      const topicName = subjectResult.data?.name ?? topicResult.data?.name ?? 'General'
       const chapterName: string | undefined = chapterResult.data?.name ?? undefined
 
       const markdownContent = await compileArtifact({

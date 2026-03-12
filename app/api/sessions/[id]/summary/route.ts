@@ -45,7 +45,8 @@ export async function GET(
     }
 
     // Check cache (chapter-level and topic-level in parallel) unless force=true
-    if (!force) {
+    // Subject-level sessions are never cached (they aggregate multiple topics)
+    if (!force && !session.subject_id) {
       const [chapterCached, topicCached] = await Promise.all([
         session.chapter_id ? getCachedChapterSummary(user.id, session.chapter_id, depth) : null,
         session.topic_id ? getCachedSummary(user.id, session.topic_id, depth) : null,
@@ -95,8 +96,11 @@ export async function GET(
 
     // Cache miss or force=true — generate via LLM
     const svc = await createServiceClient()
-    // Fetch topic name, chapter name, and course context in parallel
-    const [topicResult, chapterResult, courseCtx] = await Promise.all([
+    // Fetch subject name, topic name, chapter name, and course context in parallel
+    const [subjectResult, topicResult, chapterResult, courseCtx] = await Promise.all([
+      session.subject_id
+        ? svc.from('subjects').select('name').eq('id', session.subject_id).single()
+        : Promise.resolve({ data: null }),
       session.topic_id
         ? svc.from('topics').select('name').eq('id', session.topic_id).single()
         : Promise.resolve({ data: null }),
@@ -105,7 +109,8 @@ export async function GET(
         : Promise.resolve({ data: null }),
       getCourseContext(session.course_id).catch(() => null),
     ])
-    const topicName = topicResult.data?.name ?? 'General'
+    // For subject-level sessions, the "topic" for the summary generator is the subject name
+    const topicName = subjectResult.data?.name ?? topicResult.data?.name ?? 'General'
     const chapterName: string | undefined = chapterResult.data?.name ?? undefined
 
     const encoder = new TextEncoder()

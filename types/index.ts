@@ -48,6 +48,7 @@ export interface Course {
 export interface StudySession {
   id: string;
   course_id: string;
+  subject_id?: string;
   topic_id?: string;
   chapter_id?: string;
   title?: string;
