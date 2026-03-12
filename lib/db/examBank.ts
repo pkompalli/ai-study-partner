@@ -302,6 +302,34 @@ export async function getExamQuestions(formatId: string, sectionId?: string) {
   return (data ?? []).map(mapExamQuestionRow)
 }
 
+export async function getExamQuestionsByTopicAndDepth(
+  formatId: string,
+  topicId: string,
+  depth: number,
+  limit?: number,
+) {
+  const supabase = await createServiceClient()
+
+  const run = async (cols: string) => {
+    let query = supabase
+      .from('exam_questions')
+      .select(cols)
+      .eq('exam_format_id', formatId)
+      .eq('topic_id', topicId)
+      .eq('depth', depth)
+      .order('created_at', { ascending: false })
+    if (limit) query = query.limit(limit)
+    return query
+  }
+
+  let { data, error } = await run(EXAM_Q_COLS_WITH_IMAGE)
+  if (error && isMissingColumnError(error, 'image')) {
+    ;({ data, error } = await run(EXAM_Q_COLS_NO_IMAGE))
+  }
+  if (error) throw error
+  return (data ?? []).map(mapExamQuestionRow)
+}
+
 export async function getExamQuestionById(questionId: string) {
   const supabase = await createServiceClient()
 

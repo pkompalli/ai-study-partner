@@ -5,9 +5,11 @@ import {
   saveExamQuestions,
   deleteExamQuestions,
   getExamQuestions,
+  getExamQuestionsByTopicAndDepth,
 } from '@/lib/db/examBank'
 import { getCourseContext, getCourseWithTree } from '@/lib/db/courses'
-import { generateExamQuestions } from '@/lib/llm/examQuestionGenerator'
+import { getCachedChapterSummary, getLastCachedChapterDepth, getCachedSummary, getLastCachedDepth } from '@/lib/db/topicBank'
+import { generateExamQuestions, generateChapterKeyPoints } from '@/lib/llm/examQuestionGenerator'
 import { randomUUID } from 'crypto'
 import { apiErrorResponse, getRequestId, logApiError } from '@/lib/server/apiError'
 // GET /api/exam/formats/[id]/questions — list questions for a format
@@ -58,6 +60,7 @@ export async function POST(
       topicId?: string
       chapterId?: string
       batch?: boolean
+      force?: boolean
     } = {}
     try {
       body = await req.json()
@@ -69,9 +72,10 @@ export async function POST(
     const ctx = await getCourseContext(format.course_id)
     const courseTree = await getCourseWithTree(format.course_id, user.id)
 
-    // Flatten topics
+    // Flatten topics and build subject grouping for sibling lookups
+    const courseSubjects = ((courseTree as unknown as { subjects?: Array<{ id: string; name: string; topics: Array<{ id: string; name: string; sort_order?: number }> }> }).subjects ?? [])
     const allTopics: Array<{ id: string; name: string; subjectName?: string }> = []
-    for (const subject of ((courseTree as unknown as { subjects?: Array<{ name: string; topics: Array<{ id: string; name: string }> }> }).subjects ?? [])) {
+    for (const subject of courseSubjects) {
       for (const topic of subject.topics ?? []) {
         allTopics.push({ id: topic.id, name: topic.name, subjectName: subject.name })
       }
@@ -85,25 +89,110 @@ export async function POST(
     if (body.count !== undefined || body.batch) {
       const { count = 5, difficulty = 3, topicId, chapterId } = body
 
-      let topics: Array<{ id: string; name: string; subjectName?: string }>
+      let topics: Array<{ id: string; name: string; subjectName?: string; chapterName?: string; priorChapters?: string[]; laterChapters?: string[]; chapterContent?: string }>
       if (chapterId) {
         const svc = await (await import('@/lib/supabase/server')).createServiceClient()
-        const { data: chapter } = await svc.from('chapters').select('name').eq('id', chapterId).single()
-        const chapterName = chapter?.name
-        const parentTopicName = topicId ? allTopics.find((t) => t.id === topicId)?.name : undefined
+        // Fetch chapter name AND its topic_id (in case topicId wasn't sent by client)
+        const chapterResult = await svc.from('chapters').select('name, topic_id').eq('id', chapterId).single()
+        const chapterName = chapterResult.data?.name
+        // Use the chapter's own topic_id as the authoritative parent, fallback to request body
+        const resolvedTopicId = chapterResult.data?.topic_id ?? topicId
+        // Fetch sibling chapters + chapter summary content in parallel
+        const [siblingsResult, chapterContent] = await Promise.all([
+          resolvedTopicId
+            ? svc.from('chapters').select('name').eq('topic_id', resolvedTopicId).order('sort_order', { ascending: true })
+            : Promise.resolve({ data: [] as { name: string }[] }),
+          (async () => {
+            // Get the latest cached chapter summary to use as grounding content
+            const lastDepth = await getLastCachedChapterDepth(user.id, chapterId)
+            if (lastDepth !== null) {
+              const cached = await getCachedChapterSummary(user.id, chapterId, lastDepth)
+              return cached?.summary ?? null
+            }
+            return null
+          })(),
+        ])
+        const allSiblingNames = (siblingsResult.data ?? []).map((c: { name: string }) => c.name)
+        // Split into prior chapters (allowed) and later chapters (forbidden)
+        const currentIdx = allSiblingNames.indexOf(chapterName ?? '')
+        const priorChapters = currentIdx > 0 ? allSiblingNames.slice(0, currentIdx) : []
+        const laterChapters = currentIdx >= 0 ? allSiblingNames.slice(currentIdx + 1) : allSiblingNames.filter(s => s !== chapterName)
+        const parentTopicName = resolvedTopicId ? allTopics.find((t) => t.id === resolvedTopicId)?.name : undefined
+
+        // If no cached summary, generate key points as grounding content
+        let groundingContent: string | undefined = chapterContent ?? undefined
+        if (!groundingContent && chapterName) {
+          groundingContent = await generateChapterKeyPoints({
+            chapterName,
+            topicName: parentTopicName ?? chapterName,
+            courseName: ctx?.name ?? 'Course',
+            siblingChapters: allSiblingNames.filter(s => s !== chapterName),
+          }) || undefined
+        }
+
+        console.log(`[examQ route] chapterId=${chapterId}, chapterName="${chapterName}", resolvedTopicId=${resolvedTopicId}, parentTopic="${parentTopicName}", prior=[${priorChapters.join(', ')}], later=[${laterChapters.join(', ')}], contentSource=${chapterContent ? 'cached' : groundingContent ? 'generated' : 'none'} (${groundingContent?.length ?? 0} chars)`)
         if (chapterName) {
-          topics = [{ id: chapterId, name: chapterName, subjectName: parentTopicName }]
+          topics = [{ id: resolvedTopicId ?? chapterId, name: parentTopicName ?? chapterName, subjectName: parentTopicName, chapterName, priorChapters, laterChapters, chapterContent: groundingContent ?? undefined }]
         } else {
-          const matched = topicId ? allTopics.filter((t) => t.id === topicId) : []
+          const matched = resolvedTopicId ? allTopics.filter((t) => t.id === resolvedTopicId) : []
           topics = matched.length > 0 ? matched : allTopics
         }
+      } else if (topicId) {
+        // Topic-level generation (no chapter) — apply boundary enforcement
+        // using all other topics in the course as the forbidden list
+        const matched = allTopics.find((t) => t.id === topicId)
+        if (matched) {
+          const otherTopicNames = allTopics
+            .filter(t => t.id !== topicId)
+            .map(t => t.name)
+
+          // Fetch cached topic summary for grounding
+          let groundingContent: string | undefined
+          const lastDepth = await getLastCachedDepth(user.id, topicId)
+          if (lastDepth !== null) {
+            const cached = await getCachedSummary(user.id, topicId, lastDepth)
+            groundingContent = cached?.summary ?? undefined
+          }
+          if (!groundingContent) {
+            groundingContent = await generateChapterKeyPoints({
+              chapterName: matched.name,
+              topicName: matched.subjectName ?? matched.name,
+              courseName: ctx?.name ?? 'Course',
+              siblingChapters: otherTopicNames,
+            }) || undefined
+          }
+
+          console.log(`[examQ route] topic-level: topicId=${topicId}, name="${matched.name}", subject="${matched.subjectName}", forbidden=[${otherTopicNames.join(', ')}], grounding=${groundingContent ? `${groundingContent.length} chars` : 'none'}`)
+
+          // Reuse chapterName/laterChapters fields for boundary enforcement
+          topics = [{
+            id: topicId,
+            name: matched.subjectName ?? matched.name,
+            subjectName: matched.subjectName,
+            chapterName: matched.name,
+            priorChapters: [],
+            laterChapters: otherTopicNames,
+            chapterContent: groundingContent,
+          }]
+        } else {
+          topics = allTopics
+        }
       } else {
-        const matched = topicId ? allTopics.filter((t) => t.id === topicId) : []
-        topics = matched.length > 0 ? matched : allTopics
+        topics = allTopics
       }
 
-      const resolveTopicId = (qTopicId: string | undefined): string | undefined =>
-        body.chapterId && qTopicId === body.chapterId ? body.topicId : qTopicId
+      const clampedDifficulty = Math.max(1, Math.min(5, difficulty))
+
+      // Check DB cache: if we already have questions for this topic+difficulty, return them
+      // Skip cache if force=true (explicit regenerate)
+      const scopeTopicId = topicId ?? chapterId
+      if (scopeTopicId && !body.force) {
+        const cached = await getExamQuestionsByTopicAndDepth(id, scopeTopicId, clampedDifficulty, Math.min(count, 20))
+        if (cached.length > 0) {
+          console.log(`[examQ route] DB cache hit: ${cached.length} questions for topic=${scopeTopicId}, difficulty=${clampedDifficulty}`)
+          return NextResponse.json({ count: cached.length, questions: cached, _cached: true })
+        }
+      }
 
       const generated = await generateExamQuestions({
         sections: format.sections,
@@ -112,7 +201,7 @@ export async function POST(
         examName: format.name,
         yearOfStudy: ctx?.yearOfStudy,
         batchCount: Math.min(count, 20),
-        difficulty: Math.max(1, Math.min(5, difficulty)),
+        difficulty: clampedDifficulty,
       })
 
       if (generated.length === 0) {
@@ -126,20 +215,19 @@ export async function POST(
       await saveExamQuestions(id, user.id, format.course_id, questionsWithIds.map((q) => ({
         ...q,
         id: q._id,
-        topic_id: resolveTopicId(q.topic_id),
+        depth: clampedDifficulty,
       })))
 
       const questions = questionsWithIds.map((q) => {
         const section = sectionMap[q.section_id]
-        const resolvedTopicId = resolveTopicId(q.topic_id)
         return {
           id: q._id,
           exam_format_id: id,
           section_id: q.section_id,
           section_name: section?.name ?? '',
           section_question_type: section?.question_type ?? '',
-          topic_id: resolvedTopicId,
-          topic_name: resolvedTopicId ? topicNameMap[resolvedTopicId] : undefined,
+          topic_id: q.topic_id,
+          topic_name: q.topic_id ? topicNameMap[q.topic_id] : undefined,
           course_id: format.course_id,
           question_text: q.question_text,
           dataset: q.dataset,
@@ -147,7 +235,7 @@ export async function POST(
           correct_option_index: q.correct_option_index,
           max_marks: q.max_marks,
           mark_scheme: q.mark_scheme,
-          depth: 3,
+          depth: clampedDifficulty,
         }
       })
 

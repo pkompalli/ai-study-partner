@@ -116,8 +116,9 @@ export async function generateResponsePills(
   topicName: string,
   levelLabel: string,
   depth?: number,
+  chapterName?: string,
 ): Promise<PillsResult> {
-  const prompt = buildPillsPrompt(aiResponse, topicName, levelLabel, depth);
+  const prompt = buildPillsPrompt(aiResponse, topicName, levelLabel, depth, chapterName);
 
   const raw = await chatCompletion([
     { role: 'system', content: prompt },

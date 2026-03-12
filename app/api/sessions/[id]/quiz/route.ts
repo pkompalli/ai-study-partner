@@ -3,14 +3,6 @@ import { createClient, createServiceClient } from '@/lib/supabase/server'
 import { getSessionById, getSessionMessages, saveMessage, saveQuiz } from '@/lib/db/sessions'
 import { generateQuiz } from '@/lib/llm/quizGenerator'
 
-// Helper to resolve topic name from topic_id
-async function resolveTopicName(topicId?: string | null): Promise<string> {
-  if (!topicId) return 'General'
-  const svc = await createServiceClient()
-  const { data } = await svc.from('topics').select('name').eq('id', topicId).single()
-  return data?.name ?? 'General'
-}
-
 // POST /api/sessions/[id]/quiz — generate a quiz from the session conversation
 export async function POST(
   _req: NextRequest,
@@ -25,10 +17,21 @@ export async function POST(
     const session = await getSessionById(id, user.id)
     const topicId = session.topic_id ?? undefined
 
-    const messages = await getSessionMessages(id)
-    const topicName = await resolveTopicName(topicId)
+    // Resolve topic/chapter names and messages in parallel
+    const svc = await createServiceClient()
+    const [messages, topicResult, chapterResult] = await Promise.all([
+      getSessionMessages(id),
+      session.topic_id
+        ? svc.from('topics').select('name').eq('id', session.topic_id).single()
+        : Promise.resolve({ data: null }),
+      session.chapter_id
+        ? svc.from('chapters').select('name').eq('id', session.chapter_id).single()
+        : Promise.resolve({ data: null }),
+    ])
+    const topicName = topicResult.data?.name ?? 'General'
+    const chapterName: string | undefined = chapterResult.data?.name ?? undefined
 
-    const questions = await generateQuiz(topicName, messages)
+    const questions = await generateQuiz(topicName, messages, chapterName)
     const quizId = await saveQuiz(id, user.id, topicId, questions)
     await saveMessage(id, 'assistant', 'Here is your quiz!', 'quiz', { quizId, questions })
 

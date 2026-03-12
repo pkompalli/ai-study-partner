@@ -148,7 +148,7 @@ interface ExamState {
   // Session exam tab actions
   loadSessionBatch: (formatId: string, topicId?: string, chapterId?: string) => Promise<void>;
   loadMoreSessionBatch: (formatId: string, topicId?: string, chapterId?: string) => Promise<void>;
-  refreshBatchAtDifficulty: (formatId: string, difficulty: number, topicId?: string, chapterId?: string) => Promise<void>;
+  refreshBatchAtDifficulty: (formatId: string, difficulty: number, topicId?: string, chapterId?: string, force?: boolean) => Promise<void>;
   setSessionAnswerText: (questionId: string, text: string) => void;
   setSessionSelectedOption: (questionId: string, index: number) => void;
   submitSessionAnswer: (questionId: string, files?: File[]) => Promise<void>;
@@ -455,12 +455,12 @@ export const useExamStore = create<ExamState>((set, get) => ({
   loadMoreSessionBatch: async (formatId, topicId, chapterId) => {
     const { sessionBankAll, examDifficulty, requestedCount } = get();
 
-    // Always generate new questions and append
+    // Always generate new questions and append (force bypasses DB cache)
     set({ sessionBatchGenerating: true });
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions`,
-        { count: requestedCount, difficulty: examDifficulty, topicId, chapterId },
+        { count: requestedCount, difficulty: examDifficulty, topicId, chapterId, force: true },
       );
       const newQs = data.questions ?? [];
       const all = [...sessionBankAll, ...newQs];
@@ -475,7 +475,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     }
   },
 
-  refreshBatchAtDifficulty: async (formatId, newDifficulty, topicId, chapterId) => {
+  refreshBatchAtDifficulty: async (formatId, newDifficulty, topicId, chapterId, force) => {
     const clamped = Math.max(1, Math.min(5, newDifficulty));
     const { requestedCount } = get();
     // Clear current batch immediately and show loading spinner
@@ -490,7 +490,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     try {
       const { data } = await api.post<{ questions: ExamQuestion[] }>(
         `/api/exam/formats/${formatId}/questions`,
-        { count: requestedCount, difficulty: clamped, topicId, chapterId },
+        { count: requestedCount, difficulty: clamped, topicId, chapterId, ...(force ? { force: true } : {}) },
       );
       const newQs = data.questions ?? [];
       set({

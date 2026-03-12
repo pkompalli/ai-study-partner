@@ -100,9 +100,9 @@ export async function GET(
         })
       }
 
-      const { topicName } = await resolveNames(topicId)
+      const { topicName, chapterName } = await resolveNames(topicId, chapterId)
       const level = inferAcademicLevel(courseCtx?.yearOfStudy, courseCtx?.name)
-      const result = await generateResponsePills(lastAssistant.content, topicName, level.label)
+      const result = await generateResponsePills(lastAssistant.content, topicName, level.label, undefined, chapterName)
       return NextResponse.json({ sourceMessageId: lastAssistant.id ?? null, ...result })
     }
 

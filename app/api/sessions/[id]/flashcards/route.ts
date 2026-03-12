@@ -59,10 +59,9 @@ export async function POST(
 
     const messages = await getSessionMessages(id)
     const { topicName, chapterName } = await resolveNames(topicId, chapterId)
-    const flashcardContext = chapterName ? `${topicName} — ${chapterName}` : topicName
     const existingFronts = topicId ? await getTopicCardFronts(user.id, topicId, chapterId) : []
 
-    const newCards = await generateFlashcards(flashcardContext, messages, existingFronts)
+    const newCards = await generateFlashcards(topicName, messages, existingFronts, chapterName)
 
     if (topicId && newCards.length > 0) {
       await saveTopicCards(user.id, topicId, session.course_id, id, depth, newCards, chapterId)

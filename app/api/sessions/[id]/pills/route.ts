@@ -37,15 +37,19 @@ export async function GET(
       })
     }
 
-    // Resolve topic name
+    // Resolve topic and chapter names in parallel
     const svc = await createServiceClient()
-    let topicName = 'General'
-    if (session.topic_id) {
-      const { data } = await svc.from('topics').select('name').eq('id', session.topic_id).single()
-      if (data) topicName = data.name
-    }
-
-    const courseCtx = await getCourseContext(session.course_id)
+    const [topicResult, chapterResult, courseCtx] = await Promise.all([
+      session.topic_id
+        ? svc.from('topics').select('name').eq('id', session.topic_id).single()
+        : Promise.resolve({ data: null }),
+      session.chapter_id
+        ? svc.from('chapters').select('name').eq('id', session.chapter_id).single()
+        : Promise.resolve({ data: null }),
+      getCourseContext(session.course_id),
+    ])
+    const topicName = topicResult.data?.name ?? 'General'
+    const chapterName: string | undefined = chapterResult.data?.name ?? undefined
     const level = inferAcademicLevel(courseCtx?.yearOfStudy, courseCtx?.name)
 
     const aiContent = typeof lastAI.content === 'string' ? lastAI.content : ''
@@ -53,7 +57,7 @@ export async function GET(
     const depthParam = _req.nextUrl.searchParams.get('depth')
     const depth = depthParam ? Math.min(Math.max(Number(depthParam), 1), 5) : undefined
 
-    const result = await generateResponsePills(aiContent, topicName, level.label, depth)
+    const result = await generateResponsePills(aiContent, topicName, level.label, depth, chapterName)
 
     return NextResponse.json({ sourceMessageId: lastAI.id ?? null, ...result })
   } catch (err: unknown) {

@@ -8,6 +8,13 @@ export interface TopicRef {
   id: string;
   name: string;
   subjectName?: string;
+  chapterName?: string;
+  /** Chapters before the current one (allowed as prior knowledge) */
+  priorChapters?: string[];
+  /** Chapters after the current one (FORBIDDEN — not yet covered) */
+  laterChapters?: string[];
+  /** Actual lesson summary content for the chapter — used to positively ground the LLM */
+  chapterContent?: string;
 }
 
 export interface GeneratedQuestion {
@@ -20,6 +27,38 @@ export interface GeneratedQuestion {
   max_marks: number;
   mark_scheme: MarkCriterion[];
   image?: { query: string; alt: string };
+}
+
+/**
+ * Generate a concise key-points outline for a chapter when no cached summary exists.
+ * Used as positive grounding for exam question generation. */
+export async function generateChapterKeyPoints(params: {
+  chapterName: string;
+  topicName: string;
+  courseName: string;
+  siblingChapters?: string[];
+}): Promise<string> {
+  const siblingsCtx = params.siblingChapters?.length
+    ? `\nOther chapters in this topic (for context on scope boundaries): ${params.siblingChapters.map(s => `"${s}"`).join(', ')}`
+    : '';
+
+  const prompt = `You are a curriculum expert. List the key concepts, formulas, and techniques covered in the chapter "${params.chapterName}" within the topic "${params.topicName}" for the course "${params.courseName}".${siblingsCtx}
+
+IMPORTANT: List ONLY concepts that belong specifically to "${params.chapterName}". Do NOT include concepts from other chapters.
+
+Format: A concise bulleted list of 10-20 key points. Each point should name a specific concept, law, formula, or technique. Be specific (e.g., "Brønsted-Lowry definition of acids and bases" not just "acid-base theory").`;
+
+  try {
+    const raw = await chatCompletion(
+      [{ role: 'user', content: prompt }],
+      { temperature: 0.2, maxTokens: 800 },
+    );
+    console.log(`[examQ] generated key points for "${params.chapterName}" (${raw.length} chars)`);
+    return raw.trim();
+  } catch (err) {
+    console.warn(`[examQ] failed to generate key points for "${params.chapterName}":`, err);
+    return '';
+  }
 }
 
 interface InferredFormat {
@@ -405,12 +444,21 @@ export async function generateExamQuestions(params: {
         marksForQuestion: defaultMarks,
         topicName: topic.name,
         subjectName: topic.subjectName,
+        chapterName: topic.chapterName,
+        chapterContent: topic.chapterContent,
+        priorChapters: topic.priorChapters,
+        laterChapters: topic.laterChapters,
         courseName,
         examName,
         levelLabel: level.label,
         difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
         existingQuestions: [...seenTexts],
       });
+
+      if (qi === 0) {
+        console.log(`[examQ] batch prompt scope — topic: "${topic.name}", chapter: "${topic.chapterName ?? 'none'}", prior: [${(topic.priorChapters ?? []).join(', ')}], forbidden: [${(topic.laterChapters ?? []).join(', ')}]`);
+        console.log(`[examQ] prompt snippet (first 600):`, prompt.slice(0, 600));
+      }
 
       try {
         const raw = await chatCompletion(
@@ -420,7 +468,6 @@ export async function generateExamQuestions(params: {
         const result = parseGeneratedQuestion(raw, section, topic.id, defaultMarks);
         if (result) {
           batchResults.push(result);
-          // Store a concise snippet so the LLM knows what to avoid next time
           seenTexts.push(result.question_text.replace(/\s+/g, ' ').slice(0, 120));
         }
       } catch (err) {
@@ -456,6 +503,9 @@ export async function generateExamQuestions(params: {
             marksForQuestion: defaultMarks,
             topicName: topic.name,
             subjectName: topic.subjectName,
+            chapterName: topic.chapterName,
+            priorChapters: topic.priorChapters,
+            laterChapters: topic.laterChapters,
             courseName,
             examName,
             levelLabel: level.label,

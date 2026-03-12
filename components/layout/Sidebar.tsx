@@ -155,6 +155,7 @@ export function Sidebar() {
                       subjects={course.subjects}
                       courseId={course.id}
                       activeTopicId={activeSession?.course_id === course.id ? activeSession?.topic_id : undefined}
+                      activeChapterId={activeSession?.course_id === course.id ? activeSession?.chapter_id : undefined}
                       onNavigate={closeMobile}
                     />
                   </div>

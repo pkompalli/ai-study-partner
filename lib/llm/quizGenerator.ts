@@ -1,21 +1,24 @@
 import { chatCompletion } from '@/lib/llm/client';
-import { QUIZ_GENERATOR_PROMPT } from '@/lib/llm/prompts';
+import { buildQuizPrompt } from '@/lib/llm/prompts';
 import type { QuizQuestion, SessionMessage } from '@/types';
 
 export async function generateQuiz(
   topicName: string,
-  recentMessages: SessionMessage[]
+  recentMessages: SessionMessage[],
+  chapterName?: string,
 ): Promise<QuizQuestion[]> {
   const context = recentMessages
     .slice(-8)
     .map(m => `${m.role === 'user' ? 'Student' : 'Study Mate'}: ${m.content}`)
     .join('\n');
 
+  const scopeLabel = chapterName ? `${topicName} > ${chapterName}` : topicName;
+
   const response = await chatCompletion([
-    { role: 'system', content: QUIZ_GENERATOR_PROMPT },
+    { role: 'system', content: buildQuizPrompt(topicName, chapterName) },
     {
       role: 'user',
-      content: `Topic: "${topicName}"\n\nRecent conversation context:\n${context}\n\nGenerate a 5-question quiz.`,
+      content: `Topic: "${scopeLabel}"\n\nRecent conversation context:\n${context}\n\nGenerate a 5-question quiz.`,
     },
   ], { temperature: 0.5 });
 

@@ -341,7 +341,7 @@ const PILLS_DEPTH_INSTRUCTIONS: Record<number, string> = {
   5: 'Ask rigorous questions probing edge cases, derivations, quantitative reasoning, or subtle distinctions.',
 };
 
-export function buildPillsPrompt(aiResponse: string, topicName: string, levelLabel: string, depth?: number): string {
+export function buildPillsPrompt(aiResponse: string, topicName: string, levelLabel: string, depth?: number, chapterName?: string): string {
   const d = Math.min(Math.max(depth ?? 3, 1), 5);
   // Decide question count based on content length AND depth
   const contentLen = aiResponse.trim().length;
@@ -349,8 +349,9 @@ export function buildPillsPrompt(aiResponse: string, topicName: string, levelLab
   const maxByDepth = d <= 2 ? 2 : d === 3 ? 4 : 5;
   const qCount = Math.min(baseCount, maxByDepth);
   const depthInstruction = PILLS_DEPTH_INSTRUCTIONS[d];
+  const scopeLabel = chapterName ? `${topicName} > ${chapterName}` : topicName;
 
-  return `You are analyzing a study conversation about "${topicName}" with a ${levelLabel} student.
+  return `You are analyzing a study conversation about "${scopeLabel}" with a ${levelLabel} student.${chapterName ? `\nThe content is specifically about the chapter "${chapterName}" — all questions and suggestions must be strictly scoped to this chapter.` : ''}
 
 The study mate just responded with:
 ---
@@ -385,8 +386,14 @@ Guidelines:
 - followupPills: 5-12 words each, intellectually stimulating next-step explorations — edge cases, mechanisms the student hasn't encountered yet, real-world applications, or conceptual tensions worth probing`;
 }
 
-export const QUIZ_GENERATOR_PROMPT = `You are an expert quiz creator for educational content.
-Generate exactly 5 multiple-choice questions based on the provided topic and conversation context.
+export function buildQuizPrompt(topicName: string, chapterName?: string): string {
+  const scopeLabel = chapterName ? `${topicName} > ${chapterName}` : topicName;
+  const scopeConstraint = chapterName
+    ? `\n- All questions must be strictly about "${chapterName}" — do NOT include concepts from other chapters within "${topicName}"`
+    : '';
+
+  return `You are an expert quiz creator for educational content.
+Generate exactly 5 multiple-choice questions about "${scopeLabel}" based on the provided conversation context.
 
 Return ONLY valid JSON — no markdown, no code fences:
 {
@@ -405,9 +412,15 @@ Requirements:
 - Questions should test understanding, not just memorization
 - Options should be plausible (avoid obvious wrong answers)
 - Include varied difficulty levels
-- Explanations should be educational and clear`;
+- Explanations should be educational and clear${scopeConstraint}`;
+}
 
-export const FLASHCARD_GENERATOR_PROMPT = `You are an expert flashcard creator using spaced-repetition best practices.
+export function buildFlashcardPrompt(topicName: string, chapterName?: string): string {
+  const scopeConstraint = chapterName
+    ? `\n- All flashcards must be strictly about "${chapterName}" within "${topicName}" — do NOT include concepts from other chapters`
+    : '';
+
+  return `You are an expert flashcard creator using spaced-repetition best practices.
 Generate 6–8 flashcards based on the provided topic and conversation context.
 
 Return ONLY valid JSON — no markdown, no code fences:
@@ -427,7 +440,8 @@ Requirements:
 - Back: give the mechanism or reasoning, not just a definition. Include the key causal chain or quantitative relationship where relevant. Be concise but substantive.
 - Prioritise the most conceptually demanding ideas from the discussion — the things a student would most likely get wrong or confuse
 - Add mnemonics only where they encode a genuine conceptual relationship, not just a surface acronym
-- Cover the most important concepts from the discussion at a level of depth that will genuinely challenge the student`;
+- Cover the most important concepts from the discussion at a level of depth that will genuinely challenge the student${scopeConstraint}`;
+}
 
 export const ARTIFACT_COMPILER_PROMPT = `You are an expert educator compiling a comprehensive study guide.
 Create a well-structured, markdown-formatted lesson document from the provided session data.

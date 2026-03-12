@@ -179,6 +179,11 @@ export function buildExamQuestionPrompt(params: {
   marksForQuestion: number;
   topicName: string;
   subjectName?: string;
+  chapterName?: string;
+  /** Actual lesson content for the chapter — used to positively ground the question */
+  chapterContent?: string;
+  priorChapters?: string[];
+  laterChapters?: string[];
   courseName: string;
   examName?: string;
   levelLabel: string;
@@ -196,10 +201,55 @@ export function buildExamQuestionPrompt(params: {
     ? `\nDifficulty: ${DIFFICULTY_LABELS[params.difficulty] ?? DIFFICULTY_LABELS[3]}`
     : '';
 
-  return `You are an expert ${params.examName ? `${params.examName} ` : ''}question setter generating a single exam question for a ${params.levelLabel} student.
+  let scopeLine: string;
+  let chapterBoundaryPreamble = '';
+  let chapterBoundaryReminder = '';
+  if (params.chapterName) {
+    const later = params.laterChapters ?? [];
+
+    if (params.chapterContent) {
+      // POSITIVE GROUNDING: give the LLM the actual chapter content and tell it to generate questions ONLY from this material
+      const contentSnippet = params.chapterContent.slice(0, 3000);
+      const forbiddenBlock = later.length > 0
+        ? `\nThe student has NOT yet studied these later chapters — do NOT test any of their content:\n${later.map(s => `  ✗ "${s}"`).join('\n')}`
+        : '';
+      chapterBoundaryPreamble = `████ CHAPTER CONTENT — YOUR ONLY SOURCE MATERIAL ████
+Below is the lesson content for the chapter "${params.chapterName}". Your question MUST test a concept that appears in this content. Do NOT introduce concepts, formulas, or techniques not covered below.
+---
+${contentSnippet}
+---${forbiddenBlock}
+████████████████████████████████████████
+
+`;
+      chapterBoundaryReminder = `\n\n████ REMINDER: Your question must be answerable using ONLY the chapter content provided above. If a concept does not appear in that content, do NOT test it. ████`;
+    } else {
+      // Fallback: negative grounding when no content is available
+      const prior = params.priorChapters ?? [];
+      const allowedBlock = prior.length > 0
+        ? `\nALLOWED prior knowledge (chapters the student has already covered):\n${prior.map(s => `  ✓ "${s}"`).join('\n')}`
+        : '';
+      const forbiddenBlock = later.length > 0
+        ? `\nFORBIDDEN — chapters the student has NOT yet studied (DO NOT test these):\n${later.map(s => `  ✗ "${s}"`).join('\n')}`
+        : '';
+      chapterBoundaryPreamble = `████ CHAPTER BOUNDARY CONSTRAINT ████
+You are generating a question for the chapter "${params.chapterName}".${allowedBlock}${forbiddenBlock}
+The question MUST test "${params.chapterName}" content.${prior.length > 0 ? ` It MAY assume prior knowledge from earlier chapters listed above.` : ''} It MUST NOT test, reference, or require any concept from the FORBIDDEN chapters.
+████████████████████████████████████████
+
+`;
+      chapterBoundaryReminder = later.length > 0
+        ? `\n\n████ REMINDER: The student has NOT studied ${later.map(s => `"${s}"`).join(', ')} yet. Your question MUST NOT require knowledge from any of these later chapters. ████`
+        : '';
+    }
+    scopeLine = `Topic: "${params.subjectName ?? params.topicName}"\nChapter: "${params.chapterName}"`;
+  } else {
+    scopeLine = `Topic: "${params.topicName}"${params.subjectName ? `\nSubject: "${params.subjectName}"` : ''}`;
+  }
+
+  return `${chapterBoundaryPreamble}You are an expert ${params.examName ? `${params.examName} ` : ''}question setter generating a single exam question for a ${params.levelLabel} student.
 
 Course: "${params.courseName}"
-Topic: "${params.topicName}"${params.subjectName ? `\nSubject: "${params.subjectName}"` : ''}
+${scopeLine}
 Section: "${params.sectionName}"
 Question type: ${params.questionType.replace('_', ' ')}
 Marks available: ${params.marksForQuestion}${difficultyLine}${avoidBlock}
@@ -229,7 +279,7 @@ Return ONLY valid JSON — no markdown, no code fences:
   [additional fields depending on type]
   "max_marks": ${params.marksForQuestion},
   "mark_scheme": [{"label": "...", "description": "...", "marks": 1}]
-}`;
+}${chapterBoundaryReminder}`;
 }
 
 // ─── Marking ───────────────────────────────────────────────────────────────────
