@@ -68,20 +68,48 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
     router.push(buildSessionStartRoute({ courseId, topicId, chapterId }));
   };
 
+  const handleSubjectNavigate = (subject: Subject) => {
+    // Navigate to the first topic under this subject
+    const firstTopic = subject.topics[0];
+    if (!firstTopic) return;
+    handleNavigate(firstTopic.id);
+    // Also expand the subject to show its topics
+    setExpanded(prev => new Set([...prev, subject.id]));
+  };
+
   return (
     <div className="space-y-0.5">
-      {subjects.map(subject => (
+      {subjects.map(subject => {
+        // Subject is "active" when the current session's topic belongs to it
+        const isSubjectActive = subject.topics.some(t => t.id === activeTopicId);
+        const isSubjectStarting = subject.topics.some(t => startingSessionKey === t.id);
+        return (
         <div key={subject.id}>
-          <button
-            onClick={() => toggle(subject.id)}
-            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-left hover:bg-primary-800 transition-colors"
-          >
-            {expanded.has(subject.id)
-              ? <ChevronDown className="h-3 w-3 text-primary-400 flex-shrink-0" />
-              : <ChevronRight className="h-3 w-3 text-primary-400 flex-shrink-0" />
-            }
-            <span className="text-xs font-semibold text-primary-200 truncate">{subject.name}</span>
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={() => toggle(subject.id)}
+              className="p-1 flex-shrink-0 rounded"
+            >
+              {expanded.has(subject.id)
+                ? <ChevronDown className="h-3 w-3 text-primary-400" />
+                : <ChevronRight className="h-3 w-3 text-primary-400" />
+              }
+            </button>
+            <button
+              onClick={() => handleSubjectNavigate(subject)}
+              disabled={Boolean(startingSessionKey) || subject.topics.length === 0}
+              className={`flex-1 text-left px-1 py-1.5 rounded-md text-xs font-semibold truncate transition-colors ${
+                isSubjectActive
+                  ? 'text-white'
+                  : 'text-primary-200 hover:text-white hover:bg-primary-800'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <span className="truncate">{subject.name}</span>
+                {isSubjectStarting && <Loader2 className="h-3 w-3 animate-spin text-primary-300 flex-shrink-0" />}
+              </span>
+            </button>
+          </div>
 
           {expanded.has(subject.id) && (
             <div className="ml-4 space-y-0.5">
@@ -132,7 +160,8 @@ export function SidebarCourseTree({ subjects, courseId, activeTopicId, activeCha
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
