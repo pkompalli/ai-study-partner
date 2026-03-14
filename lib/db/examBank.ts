@@ -100,6 +100,7 @@ export async function createExamFormat(
       marks_per_question?: number
       total_marks?: number
       instructions?: string
+      num_options?: number
     }>
   },
 ): Promise<ExamFormat> {
@@ -128,6 +129,7 @@ export async function createExamFormat(
     marks_per_question: s.marks_per_question ?? null,
     total_marks: s.total_marks ?? null,
     instructions: s.instructions ?? null,
+    num_options: s.num_options ?? null,
     sort_order: idx,
     user_id: userId,
   }))
@@ -183,6 +185,7 @@ export async function replaceSections(
     marks_per_question?: number
     total_marks?: number
     instructions?: string
+    num_options?: number
   }>,
 ) {
   const supabase = await createServiceClient()
@@ -212,6 +215,7 @@ export async function replaceSections(
     marks_per_question: s.marks_per_question ?? null,
     total_marks: s.total_marks ?? null,
     instructions: s.instructions ?? null,
+    num_options: s.num_options ?? null,
     sort_order: idx,
     user_id: userId,
   }))

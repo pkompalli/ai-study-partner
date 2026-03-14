@@ -26,17 +26,19 @@ async function searchGoogle(query: string): Promise<ImageCandidate[]> {
   const url = new URL('https://www.googleapis.com/customsearch/v1')
   url.searchParams.set('key', apiKey)
   url.searchParams.set('cx', cx)
-  url.searchParams.set('q', `${query} educational diagram`)
+  url.searchParams.set('q', query)
   url.searchParams.set('searchType', 'image')
-  url.searchParams.set('num', '5')
+  url.searchParams.set('num', '8')
   url.searchParams.set('safe', 'active')
-  url.searchParams.set('imgType', 'photo')
-  url.searchParams.set('rights', 'cc_publicdomain|cc_attribute|cc_sharealike')
+  url.searchParams.set('imgSize', 'medium')
 
   const res = await fetch(url.toString(), {
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(6000),
   })
-  if (!res.ok) return []
+  if (!res.ok) {
+    console.warn(`[imageSources] Google search failed: ${res.status}`)
+    return []
+  }
 
   const data = await res.json()
   const items = data.items ?? []
@@ -80,9 +82,12 @@ async function searchWikimedia(query: string): Promise<ImageCandidate[]> {
 
   const res = await fetch(url.toString(), {
     headers: { 'User-Agent': 'StudyMateApp/1.0 (educational; non-commercial)' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(6000),
   })
-  if (!res.ok) return []
+  if (!res.ok) {
+    console.warn(`[imageSources] Wikimedia search failed: ${res.status}`)
+    return []
+  }
 
   const data = await res.json()
   const pages = data.query?.pages
@@ -105,7 +110,8 @@ async function searchWikimedia(query: string): Promise<ImageCandidate[]> {
     }
     const info = p.imageinfo?.[0]
     if (!info?.mime?.startsWith('image/')) continue
-    if (info.mime === 'image/svg+xml') continue
+    // Allow SVG — many educational diagrams are SVG
+    // Skip non-image types only
 
     const meta = info.extmetadata
     results.push({
@@ -135,7 +141,7 @@ async function searchWikipedia(query: string): Promise<ImageCandidate[]> {
 
   const searchRes = await fetch(searchUrl.toString(), {
     headers: { 'User-Agent': 'StudyMateApp/1.0 (educational; non-commercial)' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(6000),
   })
   if (!searchRes.ok) return []
 
@@ -158,7 +164,7 @@ async function searchWikipedia(query: string): Promise<ImageCandidate[]> {
 
   const imgRes = await fetch(imageUrl.toString(), {
     headers: { 'User-Agent': 'StudyMateApp/1.0 (educational; non-commercial)' },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(6000),
   })
   if (!imgRes.ok) return []
 
@@ -193,21 +199,41 @@ async function searchWikipedia(query: string): Promise<ImageCandidate[]> {
 // ─── Combined search ────────────────────────────────────────────────────────
 
 export async function searchImages(query: string): Promise<ImageCandidate[]> {
-  const [google, wikimedia, wikipedia] = await Promise.allSettled([
-    searchGoogle(query),
-    searchWikimedia(query),
-    searchWikipedia(query),
-  ])
+  // Race strategy: start all sources in parallel, but resolve early if Google
+  // returns enough results (saves waiting for slower Wikipedia 2-step fetch)
+  const googleP = searchGoogle(query)
+  const wikimediaP = searchWikimedia(query)
+  const wikipediaP = searchWikipedia(query)
 
-  const results: ImageCandidate[] = []
-  // Google first (highest quality), then Wikimedia, then Wikipedia
-  if (google.status === 'fulfilled') results.push(...google.value)
+  // Wait for Google first — if it has ≥3 results, return immediately
+  // while letting other sources settle in the background
+  const googleResult = await googleP.catch(() => [] as ImageCandidate[])
+  if (googleResult.length >= 3) {
+    console.log(`[imageSources] Google returned ${googleResult.length} — fast path`)
+    // Still collect whatever else has already resolved
+    const [wm, wp] = await Promise.allSettled([
+      Promise.race([wikimediaP, new Promise<ImageCandidate[]>(r => setTimeout(() => r([]), 500))]),
+      Promise.race([wikipediaP, new Promise<ImageCandidate[]>(r => setTimeout(() => r([]), 500))]),
+    ])
+    const results = [...googleResult]
+    if (wm.status === 'fulfilled') results.push(...wm.value)
+    if (wp.status === 'fulfilled') results.push(...wp.value)
+    return dedup(results)
+  }
+
+  // Slow path: wait for all sources
+  const [wikimedia, wikipedia] = await Promise.allSettled([wikimediaP, wikipediaP])
+
+  const results: ImageCandidate[] = [...googleResult]
   if (wikimedia.status === 'fulfilled') results.push(...wikimedia.value)
   if (wikipedia.status === 'fulfilled') results.push(...wikipedia.value)
 
-  // Deduplicate by URL
+  return dedup(results)
+}
+
+function dedup(candidates: ImageCandidate[]): ImageCandidate[] {
   const seen = new Set<string>()
-  return results.filter(c => {
+  return candidates.filter(c => {
     if (seen.has(c.url)) return false
     seen.add(c.url)
     return true

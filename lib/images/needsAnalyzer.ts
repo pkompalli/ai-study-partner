@@ -25,6 +25,7 @@ const VISUAL_DOMAINS: Record<string, string[]> = {
     'nervous system', 'brain', 'neuron', 'synapse',
     'heart', 'lung', 'kidney', 'liver', 'digestive',
     'bacteria', 'virus', 'fungi', 'parasite',
+    'evolution', 'taxonomy', 'phylogen', 'species',
   ],
   chemistry: [
     'crystal', 'lattice', 'molecular structure', 'orbital', 'bond',
@@ -32,6 +33,7 @@ const VISUAL_DOMAINS: Record<string, string[]> = {
     'periodic table', 'electron config', 'lewis structure',
     'isomer', 'stereochem', 'enantiomer', 'conformation',
     'spectroscop', 'nmr', 'ir spectrum', 'mass spectrum',
+    'reaction', 'catalyst', 'polymer', 'compound',
   ],
   physics: [
     'circuit', 'resistor', 'capacitor', 'inductor',
@@ -40,6 +42,7 @@ const VISUAL_DOMAINS: Record<string, string[]> = {
     'pendulum', 'spring', 'pulley', 'inclined plane',
     'magnetic field', 'electric field', 'force diagram',
     'telescope', 'microscope', 'oscilloscope',
+    'thermodynamic', 'entropy', 'quantum', 'atom',
   ],
   earth_science: [
     'rock', 'mineral', 'crystal', 'fossil', 'strata',
@@ -60,6 +63,7 @@ const VISUAL_DOMAINS: Record<string, string[]> = {
     'pathology', 'lesion', 'tumor', 'fracture',
     'dermatolog', 'rash', 'wound',
     'anatomy', 'dissection', 'cadaver',
+    'disease', 'symptom', 'diagnos',
   ],
   geography: [
     'map', 'topograph', 'contour', 'elevation',
@@ -67,6 +71,36 @@ const VISUAL_DOMAINS: Record<string, string[]> = {
     'river', 'delta', 'estuary', 'watershed',
     'mountain', 'plateau', 'valley', 'fjord',
     'urbanization', 'population density', 'land use',
+  ],
+  engineering: [
+    'engine', 'motor', 'turbine', 'generator',
+    'bridge', 'beam', 'truss', 'arch',
+    'gear', 'bearing', 'shaft', 'piston',
+    'hydraulic', 'pneumatic', 'mechanical',
+    'semiconductor', 'transistor', 'diode', 'chip',
+    'architecture', 'blueprint', 'floor plan',
+  ],
+  computer_science: [
+    'network', 'topology', 'architecture', 'hardware',
+    'cpu', 'gpu', 'motherboard', 'server',
+    'data center', 'cloud infrastructure',
+  ],
+  mathematics: [
+    'graph', 'geometry', 'fractal', 'tessellation',
+    'geometric', 'polyhedr', 'solid', 'surface',
+    'curve', 'conic section', 'parabola', 'ellipse',
+  ],
+  history: [
+    'artifact', 'monument', 'ruins', 'excavation',
+    'manuscript', 'painting', 'sculpture', 'architecture',
+    'battle', 'war', 'civilization', 'empire',
+    'flag', 'coat of arms', 'insignia',
+  ],
+  arts: [
+    'painting', 'sculpture', 'mosaic', 'fresco',
+    'architecture', 'cathedral', 'temple', 'mosque',
+    'instrument', 'notation', 'score',
+    'photography', 'composition', 'perspective',
   ],
 }
 
@@ -153,11 +187,7 @@ export async function analyzeImageNeeds(
 ): Promise<ImageNeedsResult> {
   const domainHint = quickVisualCheck(topicName, chapterName)
 
-  // If the quick check says no visual domain, skip the LLM call
-  if (!domainHint) {
-    return { needsImages: false, imageNeeds: [], domainHint: null }
-  }
-
+  // Always attempt LLM analysis — the domain hint just provides context
   try {
     const prompt = ANALYSIS_PROMPT
       .replace('{topic}', topicName)

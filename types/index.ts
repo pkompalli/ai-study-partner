@@ -144,6 +144,8 @@ export interface ExamSection {
   marks_per_question?: number;
   total_marks?: number;
   instructions?: string;
+  /** Number of options for MCQ questions (default 4, supports 3-6) */
+  num_options?: number;
   sort_order: number;
 }
 

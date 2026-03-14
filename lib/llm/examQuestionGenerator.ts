@@ -74,6 +74,7 @@ interface InferredFormat {
     marks_per_question?: number;
     total_marks?: number;
     instructions?: string;
+    num_options?: number;
   }>;
 }
 
@@ -117,6 +118,7 @@ function sanitizeInferredFormat(raw: Partial<InferredFormat>, examName: string):
       marks_per_question: (typeof s?.marks_per_question === 'number' && s.marks_per_question > 0) ? s.marks_per_question : undefined,
       total_marks: (typeof s?.total_marks === 'number' && s.total_marks > 0) ? s.total_marks : undefined,
       instructions: typeof s?.instructions === 'string' ? s.instructions : undefined,
+      num_options: (() => { const n = (s as Record<string, unknown>)?.num_options; return typeof n === 'number' && n >= 3 && n <= 6 ? n : undefined; })(),
     }))
     .filter((s) => s.name.length > 0 && s.num_questions > 0);
 
@@ -216,31 +218,62 @@ export async function extractExamFromPaper(
 
 function parsePaperExtractionResult(raw: string): PaperExtractionResult {
   let parsed: PaperExtractionResult;
-  try {
-    parsed = JSON.parse(raw.trim());
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('Failed to parse paper extraction result');
-    parsed = JSON.parse(match[0]);
+
+  const cleaned = raw.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+  // Try multiple parse strategies: raw → fixed LaTeX → extracted → extracted+fixed
+  const candidates: string[] = [cleaned, fixLaTeXBackslashes(cleaned)];
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  if (match) {
+    candidates.push(match[0], fixLaTeXBackslashes(match[0]));
   }
 
-  if (!Array.isArray(parsed.sections)) parsed.sections = [];
-  if (!Array.isArray(parsed.questions)) parsed.questions = [];
+  let lastErr: unknown;
+  for (const candidate of candidates) {
+    try {
+      parsed = JSON.parse(candidate);
+      // success — jump to normalization below
+      if (!Array.isArray(parsed!.sections)) parsed!.sections = [];
+      if (!Array.isArray(parsed!.questions)) parsed!.questions = [];
+      parsed!.questions = parsed!.questions.map(q => ({
+        ...q,
+        mark_scheme: Array.isArray(q.mark_scheme) ? q.mark_scheme : [],
+        max_marks: typeof q.max_marks === 'number' ? q.max_marks : 1,
+      }));
+      return parsed!;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
 
-  // Normalise mark_scheme fields
-  parsed.questions = parsed.questions.map(q => ({
-    ...q,
-    mark_scheme: Array.isArray(q.mark_scheme) ? q.mark_scheme : [],
-    max_marks: typeof q.max_marks === 'number' ? q.max_marks : 1,
-  }));
-
-  return parsed;
+  console.error('[parsePaperExtraction] all parse strategies failed. Raw (first 500):', raw.slice(0, 500));
+  throw lastErr ?? new Error('Failed to parse paper extraction result');
 }
 
 // ─── Infer exam format from name ──────────────────────────────────────────────
 
+/** Try to web-search for exam format details */
+async function webResearchExamFormat(examName: string): Promise<string | undefined> {
+  try {
+    const query = `${examName} exam format structure sections marks time number of questions`;
+    const res = await fetch(`https://www.google.com/search?q=${encodeURIComponent(query)}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return undefined;
+    const html = await res.text();
+    // Extract text snippets from search results
+    const stripped = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').slice(0, 3000);
+    return stripped || undefined;
+  } catch {
+    console.log('[examQ] web research failed, proceeding with LLM knowledge');
+    return undefined;
+  }
+}
+
 export async function inferExamFormat(examName: string, courseName: string): Promise<InferredFormat> {
-  const prompt = buildExamFormatInferPrompt(examName, courseName);
+  // Try web research for well-known exams
+  const webResearch = await webResearchExamFormat(examName);
+  const prompt = buildExamFormatInferPrompt(examName, courseName, webResearch);
   const raw = await chatCompletion(
     [{ role: 'user', content: prompt }],
     { temperature: 0.3, maxTokens: 1200 },
@@ -453,6 +486,7 @@ export async function generateExamQuestions(params: {
         levelLabel: level.label,
         difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
         existingQuestions: [...seenTexts],
+        numOptions: section.num_options,
       });
 
       if (qi === 0) {
@@ -511,6 +545,7 @@ export async function generateExamQuestions(params: {
             levelLabel: level.label,
             existingQuestions: capturedExisting,
             difficulty: difficulty ?? marksToDefaultDifficulty(defaultMarks),
+            numOptions: section.num_options,
           });
           const raw = await chatCompletion(
             [{ role: 'user', content: prompt }],
@@ -528,4 +563,88 @@ export async function generateExamQuestions(params: {
   const valid = results.filter((r): r is GeneratedQuestion => r !== null);
   console.log(`[examQ] generated ${valid.length}/${tasks.length} questions (${tasks.length - valid.length} failed)`);
   return valid;
+}
+
+// ─── Example question generation (for setup preview) ────────────────────────
+
+export interface ExampleQuestion {
+  sectionName: string;
+  questionType: string;
+  question_text: string;
+  options?: string[];
+  correct_option_index?: number;
+  max_marks: number;
+  dataset?: string;
+}
+
+/**
+ * Generate 1 example question per section for preview during format setup.
+ * These are lightweight and don't need full grounding — just to show format/style.
+ */
+export async function generateExampleQuestions(params: {
+  sections: Array<{ name: string; question_type: string; marks_per_question?: number; num_options?: number }>;
+  courseName: string;
+  examName?: string;
+}): Promise<ExampleQuestion[]> {
+  const { sections, courseName, examName } = params;
+
+  const tasks = sections.map(section => async (): Promise<ExampleQuestion | null> => {
+    const marks = section.marks_per_question ?? 1;
+    const numOptions = section.num_options ?? 4;
+    const optionLine = section.question_type === 'mcq'
+      ? `Generate exactly ${numOptions} options (A-${String.fromCharCode(64 + numOptions)}).`
+      : '';
+
+    const prompt = `Generate a single realistic example ${section.question_type.replace('_', ' ')} question for a ${examName ?? 'course exam'} in "${courseName}".
+
+Section: "${section.name}"
+Marks: ${marks}
+${optionLine}
+
+This is a PREVIEW question to show the student what questions will look like. Make it representative of the exam style and difficulty.
+
+Return ONLY valid JSON — no markdown, no code fences:
+{
+  "question_text": "...",
+  ${section.question_type === 'mcq' ? `"options": ["A...", "B...", ...],\n  "correct_option_index": 0,` : ''}
+  ${['data_analysis', 'ranking', 'scenario'].includes(section.question_type) ? `"dataset": "...",` : ''}
+  "max_marks": ${marks}
+}`;
+
+    try {
+      const raw = await chatCompletion(
+        [{ role: 'user', content: prompt }],
+        { temperature: 0.8, maxTokens: 600 },
+      );
+
+      const cleaned = raw.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        parsed = JSON.parse(match[0]);
+      }
+
+      return {
+        sectionName: section.name,
+        questionType: section.question_type,
+        question_text: String(parsed.question_text ?? ''),
+        options: Array.isArray(parsed.options) ? parsed.options as string[] : undefined,
+        correct_option_index: typeof parsed.correct_option_index === 'number' ? parsed.correct_option_index : undefined,
+        max_marks: typeof parsed.max_marks === 'number' ? parsed.max_marks : marks,
+        dataset: typeof parsed.dataset === 'string' ? parsed.dataset : undefined,
+      };
+    } catch (err) {
+      console.warn(`[examQ] example question for "${section.name}" failed:`, err);
+      return null;
+    }
+  });
+
+  const results = await Promise.allSettled(tasks.map(t => t()));
+  return results
+    .filter((r): r is PromiseFulfilledResult<ExampleQuestion | null> => r.status === 'fulfilled')
+    .map(r => r.value)
+    .filter((r): r is ExampleQuestion => r !== null);
 }

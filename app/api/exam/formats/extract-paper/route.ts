@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
     const result = await extractExamFromPaper(source)
     return NextResponse.json(result)
   } catch (err: unknown) {
+    console.error('[extract-paper] ERROR:', err)
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
   }

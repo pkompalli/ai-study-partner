@@ -35,9 +35,10 @@ Return ONLY valid JSON — no markdown, no code fences:
 }
 
 Rules for sections:
-- question_type must be: mcq, short_answer, long_answer, data_analysis, calculation, ranking, scenario
+- question_type must be EXACTLY one of: mcq, short_answer, long_answer, data_analysis, calculation, ranking, scenario
 - Use ranking for SJT (situational judgement test) style questions where candidates rank actions; use scenario for case-study or scenario-based questions
 - Infer question_type from the section heading and question style
+- If a section has mixed types, split into separate sections with one type each
 - num_questions = actual count of questions you extracted for that section
 
 Rules for questions:
@@ -63,11 +64,15 @@ ${paperText.slice(0, 20000)}
 
 // ─── Format inference ──────────────────────────────────────────────────────────
 
-export function buildExamFormatInferPrompt(examName: string, courseName: string): string {
+export function buildExamFormatInferPrompt(examName: string, courseName: string, webResearch?: string): string {
+  const researchBlock = webResearch?.trim()
+    ? `\n\nWEB RESEARCH — use this as your primary source for the exam structure:\n---\n${webResearch.slice(0, 4000)}\n---\n`
+    : '';
+
   return `You are an educational exam specialist. Generate a realistic exam format based on the exam name and course.
 
 Exam: "${examName}"
-Course: "${courseName}"
+Course: "${courseName}"${researchBlock}
 
 Return ONLY valid JSON — no markdown, no code fences, no extra text:
 {
@@ -82,17 +87,19 @@ Return ONLY valid JSON — no markdown, no code fences, no extra text:
       "question_type": "mcq",
       "num_questions": 30,
       "marks_per_question": 1,
+      "num_options": 5,
       "instructions": "Answer ALL questions in this section."
     }
   ]
 }
 
-question_type must be one of: mcq, short_answer, long_answer, data_analysis, calculation
+question_type must be one of: mcq, short_answer, long_answer, data_analysis, calculation, ranking, scenario
 
 Rules:
-- Generate 2–4 sections that accurately reflect the real exam structure for "${examName}" if known
+- Generate sections that accurately reflect the REAL exam structure for "${examName}" if known
+- num_options: for MCQ sections, specify the actual number of options per question (3, 4, 5, or 6). Many professional/medical exams use 5 options (A-E). Default to 4 if unknown.
 - Use realistic mark allocations and timings
-- For well-known exams (A-Level, IB, AP, SAT, GRE, GCSE, etc.) use the actual section structure
+- For well-known exams (A-Level, IB, AP, SAT, GRE, GCSE, USMLE, PLAB, NEET, UCAT, MCAT, etc.) use the actual section structure with correct option counts
 - If the exam is not widely known, generate a sensible structure based on the subject and level inferred from the course name
 - Vary question types appropriately: exams with essays need long_answer; sciences need calculation; sciences/geography need data_analysis; medical/professional exams need ranking (SJT) and scenario`;
 }
@@ -122,17 +129,19 @@ Return ONLY valid JSON — no markdown, no code fences, no extra text:
       "question_type": "mcq",
       "num_questions": 30,
       "marks_per_question": 1,
-      "instructions": "Answer ALL questions in this section."
+      "instructions": "Answer ALL questions in this section.",
+      "num_options": 4
     }
   ]
 }
 
-question_type must be one of: mcq, short_answer, long_answer, data_analysis, calculation
+question_type must be one of: mcq, short_answer, long_answer, data_analysis, calculation, ranking, scenario
 
 Rules:
 - Extract as much structure as possible from the description
-- If the user mentions specific section names, question types, mark allocations, or timings, use them
-- If the user gives a well-known exam name (A-Level, IB, AP, SAT, GRE, GCSE), use the actual section structure for that exam, incorporating any specific details the user provided
+- If the user mentions specific section names, question types, mark allocations, or timings, use them EXACTLY
+- If the user specifies number of MCQ options (e.g. "5 options", "A-E"), set num_options accordingly. Default 4 if not specified.
+- If the user gives a well-known exam name (A-Level, IB, AP, SAT, GRE, GCSE, USMLE, PLAB, NEET), use the actual section structure for that exam, incorporating any specific details the user provided
 - If details are vague or missing, make reasonable assumptions based on the subject and level
 - Infer question types from context: "essay" → long_answer, "problems" → calculation, "multiple choice" → mcq, "SJT"/"situational judgement"/"ranking" → ranking, "scenario"/"case study" → scenario, etc.
 - Always generate at least one section
@@ -141,9 +150,15 @@ Rules:
 
 // ─── Question generation ───────────────────────────────────────────────────────
 
+/** Build MCQ instructions dynamically based on option count */
+function mcqInstructions(numOptions: number): string {
+  const n = numOptions || 4;
+  return `Generate a multiple-choice question with exactly ${n} options. ONE must be correct, ${n - 1} must be plausible distractors (common misconceptions, subtly wrong values, reversed causality).
+Return JSON fields: question_text, options (array of ${n} strings), correct_option_index (0-${n - 1}), max_marks, mark_scheme ([{label, marks}]). Optionally include image ({query, alt}) if the question requires a visual.`;
+}
+
 const QUESTION_TYPE_INSTRUCTIONS: Record<string, string> = {
-  mcq: `Generate a multiple-choice question with exactly 4 options. ONE must be correct, THREE must be plausible distractors (common misconceptions, subtly wrong values, reversed causality).
-Return JSON fields: question_text, options (array of 4 strings), correct_option_index (0-3), max_marks, mark_scheme ([{label, marks}]). Optionally include image ({query, alt}) if the question requires a visual.`,
+  mcq: mcqInstructions(4), // default, overridden at call site
 
   short_answer: `Generate a short-answer question requiring 2–4 sentences. Include line references or stimulus material if relevant.
 Return JSON fields: question_text, max_marks, mark_scheme ([{label, description, marks}]) — each criterion worth 1 mark. Optionally include image ({query, alt}) if the question requires a visual.`,
@@ -189,9 +204,13 @@ export function buildExamQuestionPrompt(params: {
   levelLabel: string;
   existingQuestions?: string[];
   difficulty?: number;
+  /** Number of options for MCQ (default 4) */
+  numOptions?: number;
 }): string {
-  const typeInstructions = QUESTION_TYPE_INSTRUCTIONS[params.questionType]
-    ?? QUESTION_TYPE_INSTRUCTIONS.short_answer;
+  // For MCQ, use dynamic option count
+  const typeInstructions = params.questionType === 'mcq'
+    ? mcqInstructions(params.numOptions || 4)
+    : (QUESTION_TYPE_INSTRUCTIONS[params.questionType] ?? QUESTION_TYPE_INSTRUCTIONS.short_answer);
 
   const avoidBlock = params.existingQuestions?.length
     ? `\n\nDo NOT repeat or closely paraphrase these already-generated questions:\n${params.existingQuestions.slice(0, 6).map(q => `- "${q}"`).join('\n')}`

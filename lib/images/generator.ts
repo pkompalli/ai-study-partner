@@ -29,7 +29,7 @@ export async function generateEducationalImage(
     // Use Gemini 2.0 Flash with image generation via REST API directly
     // since the AI SDK's generateText doesn't natively return image files
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

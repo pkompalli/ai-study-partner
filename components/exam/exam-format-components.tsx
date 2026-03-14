@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import {
   GraduationCap, Plus, Trash2, Play, RefreshCw,
-  CheckCircle2, X, Upload, FileText, AlertCircle, ImageIcon, Pencil, Zap,
+  CheckCircle2, X, Upload, FileText, AlertCircle, ImageIcon, Pencil, Zap, Eye,
 } from 'lucide-react';
 import { useExamStore } from '@/store/examStore';
 import type { PaperPreview } from '@/store/examStore';
@@ -28,6 +28,47 @@ export const QUESTION_TYPE_COLORS: Record<string, string> = {
   ranking: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   scenario: 'bg-teal-50 text-teal-700 border-teal-200',
 };
+
+interface ExampleQuestion {
+  sectionName: string;
+  questionType: string;
+  question_text: string;
+  options?: string[];
+  correct_option_index?: number;
+  max_marks: number;
+  dataset?: string;
+}
+
+// ─── Example question card ──────────────────────────────────────────────────
+
+function ExampleQuestionCard({ example }: { example: ExampleQuestion }) {
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 border border-primary-200">
+          {QUESTION_TYPE_LABELS[example.questionType] ?? example.questionType}
+        </span>
+        <span className="text-xs text-gray-400">{example.sectionName}</span>
+        <span className="text-xs text-gray-400 ml-auto">{example.max_marks}m</span>
+      </div>
+      {example.dataset && (
+        <div className="text-xs text-gray-600 bg-white border border-gray-100 rounded p-2 italic">
+          {example.dataset.slice(0, 200)}{example.dataset.length > 200 ? '...' : ''}
+        </div>
+      )}
+      <p className="text-sm text-gray-800">{example.question_text}</p>
+      {example.options && (
+        <div className="space-y-1 ml-2">
+          {example.options.map((opt, i) => (
+            <div key={i} className={`text-xs px-2 py-1 rounded ${i === example.correct_option_index ? 'bg-green-50 text-green-800 font-medium border border-green-200' : 'text-gray-600'}`}>
+              {String.fromCharCode(65 + i)}. {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Section editor row ───────────────────────────────────────────────────────
 
@@ -81,6 +122,19 @@ export function SectionRow({
             onChange={e => onChange(section._key, 'marks_per_question', parseFloat(e.target.value) || undefined)}
           />
           <span className="text-gray-400 text-xs">marks ea.</span>
+          {section.question_type === 'mcq' && (
+            <>
+              <select className="w-16 border border-gray-200 rounded-lg px-1 py-1.5 text-sm ml-1 bg-white"
+                value={section.num_options ?? 4}
+                onChange={e => onChange(section._key, 'num_options', parseInt(e.target.value))}>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+                <option value={5}>5</option>
+                <option value={6}>6</option>
+              </select>
+              <span className="text-gray-400 text-xs">opts</span>
+            </>
+          )}
         </div>
       </div>
       <button onClick={() => onDelete(section._key)} className="mt-1 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
@@ -177,6 +231,11 @@ export function FormatSetupPanel({
   const [dragOver, setDragOver] = useState(false);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [refineText, setRefineText] = useState('');
+  const [pendingReview, setPendingReview] = useState<{ name: string; sections: Array<Partial<ExamSection> & { _key: string }> } | null>(null);
+  const [examples, setExamples] = useState<ExampleQuestion[]>([]);
+  const [loadingExamples, setLoadingExamples] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   useEffect(() => {
     if (inferredFormat && !useInferred) {
@@ -225,18 +284,58 @@ export function FormatSetupPanel({
     setSections(prev => prev.filter(s => s._key !== key));
   };
 
-  const handleCreate = async () => {
-    if (!name.trim() || sections.length === 0) return;
+  const handleReview = () => {
+    const valid = sections.filter(s => s.name?.trim());
+    if (!name.trim() || !valid.length) return;
+    setPendingReview({ name: name.trim(), sections: valid });
+    setExamples([]);
+    setShowExamples(false);
+    setFeedback('');
+  };
+
+  const handlePreviewExamples = async () => {
+    if (!pendingReview) return;
+    setLoadingExamples(true);
+    setShowExamples(true);
+    try {
+      const res = await fetch('/api/exam/formats/example-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId,
+          examName: pendingReview.name,
+          sections: pendingReview.sections.map(s => ({
+            name: s.name ?? '',
+            question_type: s.question_type ?? 'short_answer',
+            num_questions: s.num_questions ?? 5,
+            marks_per_question: s.marks_per_question,
+            num_options: s.num_options,
+          })),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setExamples(data.examples ?? []);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingExamples(false);
+    }
+  };
+
+  const handleApproveAndCreate = async () => {
+    if (!pendingReview) return;
     setSaving(true);
     try {
-      const validSections = sections.filter(s => s.name?.trim());
       const fmt = await createFormat(courseId, {
-        name: name.trim(),
-        sections: validSections.map(s => ({
+        name: pendingReview.name,
+        sections: pendingReview.sections.map(s => ({
           name: s.name ?? '',
           question_type: (s.question_type ?? 'short_answer') as ExamSection['question_type'],
           num_questions: s.num_questions ?? 5,
           marks_per_question: s.marks_per_question,
+          num_options: s.num_options,
         })),
       });
       onCreated(fmt);
@@ -285,11 +384,105 @@ export function FormatSetupPanel({
       <div className="relative w-full sm:max-w-lg bg-white rounded-t-2xl sm:rounded-2xl border border-gray-100 shadow-xl p-5 space-y-4 max-h-[92dvh] sm:max-h-[90dvh] overflow-y-auto">
       <div className="flex items-center gap-2">
         <GraduationCap className="h-4 w-4 text-primary-600" />
-        <h3 className="font-semibold text-gray-900">Set up Exam Format</h3>
+        <h3 className="font-semibold text-gray-900">{pendingReview ? 'Review Exam Format' : 'Set up Exam Format'}</h3>
         <button onClick={onClose} className="ml-auto p-1 rounded hover:bg-gray-100">
           <X className="h-4 w-4 text-gray-400" />
         </button>
       </div>
+
+      {pendingReview ? (
+        <div className="space-y-4">
+          {/* Format summary */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
+                <GraduationCap className="h-4 w-4 text-primary-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900">{pendingReview.name}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {pendingReview.sections.reduce((s, sec) => s + (sec.marks_per_question ?? 1) * (sec.num_questions ?? 5), 0)} marks
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {pendingReview.sections.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded border ${QUESTION_TYPE_COLORS[s.question_type ?? 'short_answer'] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                    {QUESTION_TYPE_LABELS[s.question_type ?? 'short_answer'] ?? s.question_type}
+                  </span>
+                  <span className="text-gray-700 truncate flex-1">{s.name}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">
+                    {s.num_questions ?? 5}q{s.marks_per_question ? ` × ${s.marks_per_question}m` : ''}
+                    {s.question_type === 'mcq' && s.num_options && s.num_options !== 4 ? ` · ${s.num_options} opts` : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Example questions preview */}
+          {!showExamples ? (
+            <button onClick={handlePreviewExamples}
+              className="w-full py-2 rounded-xl border border-primary-200 text-primary-700 text-sm font-medium hover:bg-primary-50 flex items-center justify-center gap-2 transition-colors">
+              <Eye className="h-3.5 w-3.5" /> Preview example questions
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-gray-700">Example questions</h4>
+                {!loadingExamples && (
+                  <button onClick={handlePreviewExamples} className="text-xs text-primary-600 hover:text-primary-800">
+                    Regenerate
+                  </button>
+                )}
+              </div>
+
+              {loadingExamples ? (
+                <div className="border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-2">
+                  <Spinner className="h-5 w-5 text-primary-500" />
+                  <p className="text-xs text-gray-400">Generating example questions...</p>
+                </div>
+              ) : examples.length > 0 ? (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {examples.map((ex, i) => (
+                    <ExampleQuestionCard key={i} example={ex} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 text-center py-3">Could not generate examples</p>
+              )}
+
+              {!loadingExamples && examples.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Feedback (optional)</label>
+                  <textarea
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[60px] resize-y"
+                    placeholder="e.g. Questions should be harder, use more clinical scenarios..."
+                    value={feedback}
+                    onChange={e => setFeedback(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Review actions */}
+          <div className="flex gap-2 pt-2">
+            <button onClick={() => setPendingReview(null)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+              Edit
+            </button>
+            <button
+              onClick={handleApproveAndCreate}
+              disabled={saving}
+              className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {saving ? <Spinner className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+              Approve & Create
+            </button>
+          </div>
+        </div>
+      ) : (<>
 
       {/* Tabs */}
       <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm font-medium">
@@ -489,12 +682,11 @@ export function FormatSetupPanel({
               Cancel
             </button>
             <button
-              onClick={handleCreate}
-              disabled={saving || !name.trim() || sections.filter(s => s.name?.trim()).length === 0}
+              onClick={handleReview}
+              disabled={!name.trim() || sections.filter(s => s.name?.trim()).length === 0}
               className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {saving ? <Spinner className="h-3.5 w-3.5" /> : null}
-              Create Format
+              Review Format →
             </button>
           </div>
         </>
@@ -505,6 +697,7 @@ export function FormatSetupPanel({
           Cancel
         </button>
       )}
+      </>)}
       </div>
     </div>
   );

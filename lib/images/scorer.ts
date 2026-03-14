@@ -1,19 +1,17 @@
 /**
- * LLM-based image relevance scorer.
- * Uses a vision-capable model to evaluate candidate images against the request.
+ * Image relevance scorer — lightweight heuristic only.
+ * No LLM vision calls for speed. Relies on search engine ranking + keyword matching.
  */
 
-import { generateText } from 'ai'
-import { resolveModel } from '@/lib/llm/registry'
 import type { ImageCandidate } from './sources'
 
 export interface ImageScore {
-  relevance: number       // 0-10: How well the image matches the requested concept
-  educationalValue: number // 0-10: How useful for learning (clear labels, good detail)
-  clarity: number         // 0-10: Image quality, resolution, readability
-  appropriateness: number // 0-10: Suitable for academic context (not misleading, not decorative)
-  total: number           // 0-100 normalized score
-  reasoning: string       // Brief explanation
+  relevance: number
+  educationalValue: number
+  clarity: number
+  appropriateness: number
+  total: number
+  reasoning: string
 }
 
 export interface ScoredImage {
@@ -21,120 +19,96 @@ export interface ScoredImage {
   score: ImageScore
 }
 
-const SCORING_PROMPT = `You are an educational image quality evaluator. Score this image on how suitable it is for teaching the specified concept to a student.
+/** Score a candidate based on metadata keyword matching against the query */
+function heuristicScore(candidate: ImageCandidate, query: string, alt: string): ScoredImage {
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+  const altWords = alt.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+  const allKeywords = [...new Set([...queryWords, ...altWords])]
 
-Concept being taught: "{query}"
-Desired image: "{alt}"
+  const text = `${candidate.title} ${candidate.description}`.toLowerCase()
 
-Score the image on these criteria (0-10 each):
-1. **relevance**: Does it directly show the requested concept? (10 = exact match, 5 = tangentially related, 0 = unrelated)
-2. **educationalValue**: Is it useful for learning? Clear labels, annotations, proper detail level? (10 = textbook-quality diagram, 0 = decorative/uninformative)
-3. **clarity**: Image quality — sharp, readable text/labels, good resolution? (10 = crisp and clear, 0 = blurry/pixelated)
-4. **appropriateness**: Suitable for an academic setting? Accurate, not misleading, not a meme or irrelevant? (10 = perfect, 0 = inappropriate)
+  // Keyword match: count how many query words appear in the image metadata
+  let matches = 0
+  for (const word of allKeywords) {
+    if (text.includes(word)) matches++
+  }
+  const matchRatio = allKeywords.length > 0 ? matches / allKeywords.length : 0
 
-Return ONLY valid JSON — no markdown, no code fences:
-{"relevance":8,"educationalValue":7,"clarity":9,"appropriateness":10,"reasoning":"Brief 1-sentence explanation"}`
+  // Also check partial/stem matching — "mitochondri" should match "mitochondria"
+  let stemMatches = 0
+  for (const word of allKeywords) {
+    const stem = word.slice(0, Math.min(word.length, 5))
+    if (stem.length >= 4 && text.includes(stem)) stemMatches++
+  }
+  const stemRatio = allKeywords.length > 0 ? stemMatches / allKeywords.length : 0
 
-export async function scoreImage(
-  candidate: ImageCandidate,
-  query: string,
-  alt: string,
-): Promise<ScoredImage> {
-  try {
-    // Fetch the image and convert to base64
-    const imgRes = await fetch(candidate.thumbUrl, {
-      signal: AbortSignal.timeout(10000),
-    })
-    if (!imgRes.ok) {
-      return makeFailScore(candidate, 'Image fetch failed')
-    }
+  // Use the better of exact or stem matching
+  const bestRatio = Math.max(matchRatio, stemRatio * 0.85)
 
-    const contentType = imgRes.headers.get('content-type') || 'image/jpeg'
-    const buffer = Buffer.from(await imgRes.arrayBuffer())
-    const base64 = buffer.toString('base64')
+  // Relevance: strict — must earn it through keyword matches
+  let relevance = Math.round(bestRatio * 10)
+  let educationalValue = 5
+  let clarity = 7
+  let appropriateness = 7
 
-    const prompt = SCORING_PROMPT
-      .replace('{query}', query)
-      .replace('{alt}', alt)
+  // Bonus for educational sources
+  if (candidate.source === 'wikimedia') { educationalValue += 2; appropriateness += 1 }
+  if (candidate.source === 'wikipedia') { educationalValue += 1; appropriateness += 1 }
 
-    const { text } = await generateText({
-      model: resolveModel(),
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: prompt },
-            { type: 'image', image: `data:${contentType};base64,${base64}` },
-          ],
-        },
-      ],
-      temperature: 0.1,
-      maxOutputTokens: 300,
-    })
+  // Bonus for educational keywords in metadata
+  const eduKeywords = ['diagram', 'illustration', 'structure', 'anatomy', 'cross section',
+    'labeled', 'schematic', 'setup', 'apparatus', 'chart', 'graph', 'micrograph',
+    'image', 'photo', 'scan', 'view', 'section']
+  for (const kw of eduKeywords) {
+    if (text.includes(kw)) { educationalValue += 1; break }
+  }
 
-    const cleaned = text.trim().replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
-    const parsed = JSON.parse(cleaned)
+  // Penalize when keywords don't match — better to fall through to generation
+  if (matches === 0 && stemMatches === 0) {
+    relevance = 0
+  }
 
-    const relevance = clamp(parsed.relevance ?? 0)
-    const educationalValue = clamp(parsed.educationalValue ?? 0)
-    const clarity = clamp(parsed.clarity ?? 0)
-    const appropriateness = clamp(parsed.appropriateness ?? 0)
+  relevance = clamp(relevance)
+  educationalValue = clamp(educationalValue)
+  clarity = clamp(clarity)
+  appropriateness = clamp(appropriateness)
 
-    // Weighted total: relevance matters most, then educational value
-    const total = Math.round(
-      (relevance * 0.35 + educationalValue * 0.30 + clarity * 0.15 + appropriateness * 0.20) * 10,
-    )
+  // Lower weight on relevance since heuristic can't truly judge visual content
+  const total = Math.round(
+    (relevance * 0.35 + educationalValue * 0.25 + clarity * 0.15 + appropriateness * 0.25) * 10,
+  )
 
-    return {
-      candidate,
-      score: {
-        relevance,
-        educationalValue,
-        clarity,
-        appropriateness,
-        total,
-        reasoning: parsed.reasoning ?? '',
-      },
-    }
-  } catch (err) {
-    console.warn('[imageScorer] scoring failed:', err)
-    return makeFailScore(candidate, 'Scoring error')
+  return {
+    candidate,
+    score: {
+      relevance,
+      educationalValue,
+      clarity,
+      appropriateness,
+      total,
+      reasoning: `keyword match ${Math.round(bestRatio * 100)}% (${matches}/${allKeywords.length}), source: ${candidate.source}`,
+    },
   }
 }
 
-/** Score multiple candidates, return sorted best-first */
+/**
+ * Score candidates using fast heuristic only — no LLM calls.
+ * Returns sorted best-first.
+ */
 export async function scoreImages(
   candidates: ImageCandidate[],
   query: string,
   alt: string,
-  maxToScore = 4,
 ): Promise<ScoredImage[]> {
-  // Only score top N to limit LLM calls
-  const toScore = candidates.slice(0, maxToScore)
-  const results = await Promise.allSettled(
-    toScore.map(c => scoreImage(c, query, alt)),
-  )
+  const scored = candidates.map(c => heuristicScore(c, query, alt))
+  scored.sort((a, b) => b.score.total - a.score.total)
 
-  return results
-    .filter((r): r is PromiseFulfilledResult<ScoredImage> => r.status === 'fulfilled')
-    .map(r => r.value)
-    .sort((a, b) => b.score.total - a.score.total)
+  console.log(`[imageScorer] scores: ${scored.slice(0, 5).map(s =>
+    `${s.score.total}:"${s.candidate.title.slice(0, 40)}"`).join(', ')}`)
+
+  return scored
 }
 
 function clamp(v: number): number {
   return Math.max(0, Math.min(10, Math.round(v)))
-}
-
-function makeFailScore(candidate: ImageCandidate, reason: string): ScoredImage {
-  return {
-    candidate,
-    score: {
-      relevance: 0,
-      educationalValue: 0,
-      clarity: 0,
-      appropriateness: 0,
-      total: 0,
-      reasoning: reason,
-    },
-  }
 }

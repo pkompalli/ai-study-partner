@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import {
   GraduationCap, Upload, Plus, Trash2, Zap, X,
-  CheckCircle2, FileText, ImageIcon, AlertCircle,
+  CheckCircle2, FileText, ImageIcon, AlertCircle, Eye,
 } from 'lucide-react';
 import { useExamStore } from '@/store/examStore';
 import { Spinner } from '@/components/ui/Spinner';
@@ -14,6 +14,16 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
   ranking: 'Ranking (SJT)', scenario: 'Scenario',
 };
 
+interface ExampleQuestion {
+  sectionName: string;
+  questionType: string;
+  question_text: string;
+  options?: string[];
+  correct_option_index?: number;
+  max_marks: number;
+  dataset?: string;
+}
+
 // ─── Section editor row ───────────────────────────────────────────────────────
 
 function SectionRow({ section, onChange, onDelete }: {
@@ -21,6 +31,7 @@ function SectionRow({ section, onChange, onDelete }: {
   onChange: (key: string, field: string, value: unknown) => void;
   onDelete: (key: string) => void;
 }) {
+  const isMcq = section.question_type === 'mcq';
   return (
     <div className="flex items-start gap-2 p-4 bg-white rounded-xl border border-gray-200 hover:border-primary-400 transition-all">
       <div className="flex-1 grid grid-cols-2 gap-2 text-sm">
@@ -47,6 +58,19 @@ function SectionRow({ section, onChange, onDelete }: {
             placeholder="Marks" value={section.marks_per_question ?? ''}
             onChange={e => onChange(section._key, 'marks_per_question', parseFloat(e.target.value) || undefined)} />
           <span className="text-gray-400 text-xs">m</span>
+          {isMcq && (
+            <>
+              <select className="w-16 border border-gray-200 rounded-lg px-1 py-1.5 text-sm ml-1 bg-white"
+                value={section.num_options ?? 4}
+                onChange={e => onChange(section._key, 'num_options', parseInt(e.target.value))}>
+                <option value={3}>3</option>
+                <option value={4}>4</option>
+                <option value={5}>5</option>
+                <option value={6}>6</option>
+              </select>
+              <span className="text-gray-400 text-xs">opts</span>
+            </>
+          )}
         </div>
       </div>
       <button onClick={() => onDelete(section._key)} className="mt-1 p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
@@ -56,19 +80,78 @@ function SectionRow({ section, onChange, onDelete }: {
   );
 }
 
+// ─── Example question card ──────────────────────────────────────────────────
+
+function ExampleQuestionCard({ example }: { example: ExampleQuestion }) {
+  return (
+    <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-primary-50 text-primary-700 border border-primary-200">
+          {QUESTION_TYPE_LABELS[example.questionType] ?? example.questionType}
+        </span>
+        <span className="text-xs text-gray-400">{example.sectionName}</span>
+        <span className="text-xs text-gray-400 ml-auto">{example.max_marks}m</span>
+      </div>
+      {example.dataset && (
+        <div className="text-xs text-gray-600 bg-white border border-gray-100 rounded p-2 italic">
+          {example.dataset.slice(0, 200)}{example.dataset.length > 200 ? '...' : ''}
+        </div>
+      )}
+      <p className="text-sm text-gray-800">{example.question_text}</p>
+      {example.options && (
+        <div className="space-y-1 ml-2">
+          {example.options.map((opt, i) => (
+            <div key={i} className={`text-xs px-2 py-1 rounded ${i === example.correct_option_index ? 'bg-green-50 text-green-800 font-medium border border-green-200' : 'text-gray-600'}`}>
+              {String.fromCharCode(65 + i)}. {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Format summary card (approve step) ──────────────────────────────────────
 
-function FormatSummaryCard({ name, sections, totalMarks, timeMinutes, questionCount, onApprove, onEdit, approving }: {
+function FormatSummaryCard({ name, sections, totalMarks, timeMinutes, questionCount, courseId, examName, onApprove, onEdit, approving }: {
   name: string;
-  sections: Array<{ name: string; question_type: string; num_questions: number; marks_per_question?: number }>;
+  sections: Array<{ name: string; question_type: string; num_questions: number; marks_per_question?: number; num_options?: number }>;
   totalMarks?: number;
   timeMinutes?: number;
   questionCount?: number;
+  courseId: string;
+  examName?: string;
   onApprove: () => void;
   onEdit: () => void;
   approving: boolean;
 }) {
+  const [examples, setExamples] = useState<ExampleQuestion[]>([]);
+  const [loadingExamples, setLoadingExamples] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
   const computedTotal = totalMarks ?? sections.reduce((s, sec) => s + (sec.marks_per_question ?? 1) * sec.num_questions, 0);
+
+  const handlePreview = async () => {
+    setLoadingExamples(true);
+    setShowExamples(true);
+    try {
+      const res = await fetch('/api/exam/formats/example-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId, examName, sections }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setExamples(data.examples ?? []);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLoadingExamples(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -99,11 +182,58 @@ function FormatSummaryCard({ name, sections, totalMarks, timeMinutes, questionCo
               <span className="text-gray-700 truncate flex-1">{s.name}</span>
               <span className="text-xs text-gray-400 flex-shrink-0">
                 {s.num_questions}q{s.marks_per_question ? ` × ${s.marks_per_question}m` : ''}
+                {s.question_type === 'mcq' && s.num_options && s.num_options !== 4 ? ` · ${s.num_options} opts` : ''}
               </span>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Example questions preview */}
+      {!showExamples ? (
+        <button onClick={handlePreview}
+          className="w-full py-2 rounded-xl border border-primary-200 text-primary-700 text-sm font-medium hover:bg-primary-50 flex items-center justify-center gap-2 transition-colors">
+          <Eye className="h-3.5 w-3.5" /> Preview example questions
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Example questions</h3>
+            {!loadingExamples && (
+              <button onClick={handlePreview} className="text-xs text-primary-600 hover:text-primary-800">
+                Regenerate
+              </button>
+            )}
+          </div>
+
+          {loadingExamples ? (
+            <div className="border border-gray-200 rounded-xl p-6 flex flex-col items-center gap-2">
+              <Spinner className="h-5 w-5 text-primary-500" />
+              <p className="text-xs text-gray-400">Generating example questions...</p>
+            </div>
+          ) : examples.length > 0 ? (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {examples.map((ex, i) => (
+                <ExampleQuestionCard key={i} example={ex} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400 text-center py-3">Could not generate examples</p>
+          )}
+
+          {!loadingExamples && examples.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Feedback (optional)</label>
+              <textarea
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[60px] resize-y"
+                placeholder="e.g. Questions should be harder, use more clinical scenarios, options should be longer..."
+                value={feedback}
+                onChange={e => setFeedback(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button onClick={onEdit} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
@@ -201,7 +331,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
 
   const handleRefine = async () => {
     if (refineText.trim().length < 5 || sections.length === 0) return;
-    const currentDesc = `Current format: "${manualName}"\nSections:\n${sections.map(s => `- ${s.name} (${s.question_type}, ${s.num_questions} questions, ${s.marks_per_question ?? '?'} marks each)`).join('\n')}\n\nUser's requested changes: ${refineText.trim()}`;
+    const currentDesc = `Current format: "${manualName}"\nSections:\n${sections.map(s => `- ${s.name} (${s.question_type}, ${s.num_questions} questions, ${s.marks_per_question ?? '?'} marks each${s.question_type === 'mcq' && s.num_options ? `, ${s.num_options} options` : ''})`).join('\n')}\n\nUser's requested changes: ${refineText.trim()}`;
     clearInferredFormat();
     setUseInferred(false);
     setRefineText('');
@@ -245,6 +375,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
           question_type: (s.question_type ?? 'short_answer') as ExamSection['question_type'],
           num_questions: s.num_questions ?? 5,
           marks_per_question: s.marks_per_question,
+          num_options: s.num_options,
         })),
       });
       onComplete();
@@ -269,7 +400,10 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
             question_type: s.question_type ?? 'short_answer',
             num_questions: s.num_questions ?? 5,
             marks_per_question: s.marks_per_question,
+            num_options: s.num_options,
           }))}
+          courseId={courseId}
+          examName={pendingManual.name}
           onApprove={handleApproveManual}
           onEdit={() => setPendingManual(null)}
           approving={approving}
@@ -282,6 +416,8 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
           totalMarks={extractedPaper.total_marks}
           timeMinutes={extractedPaper.time_minutes}
           questionCount={extractedPaper.questions.length}
+          courseId={courseId}
+          examName={extractedPaper.name}
           onApprove={handleImportAndApprove}
           onEdit={handleReset}
           approving={importing}
@@ -363,10 +499,10 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
 
           {activeTab === 'describe' && (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500">Describe your exam format in plain text — exam name, sections, question types, marks, timing. The AI will parse it into a structured format you can review and edit.</p>
+              <p className="text-xs text-gray-500">Describe your exam format in plain text — exam name, sections, question types, marks, timing, number of options. The AI will parse it into a structured format you can review and edit.</p>
               <textarea
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm min-h-[120px] resize-y"
-                placeholder={"e.g. A-Level Chemistry Paper 1\n3 hours, 100 marks total\nSection A: 30 MCQs, 1 mark each\nSection B: 5 short answer questions, 4 marks each\nSection C: 2 essay questions, 15 marks each"}
+                placeholder={"e.g. PLAB Part 1\n3 hours, 200 marks\nSection A: 180 MCQs with 5 options (A-E), 1 mark each\nSection B: 20 SJT questions, 1 mark each"}
                 value={descriptionText}
                 onChange={e => setDescriptionText(e.target.value)}
               />
@@ -387,7 +523,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
                 <label className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Exam name</label>
                 <div className="flex gap-2">
                   <input className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    placeholder="e.g. A-Level Chemistry, SAT Math, IB Biology"
+                    placeholder="e.g. A-Level Chemistry, SAT Math, IB Biology, PLAB Part 1"
                     value={manualName} onChange={e => setManualName(e.target.value)} />
                   <button onClick={handleInfer} disabled={!manualName.trim() || inferring}
                     className="flex items-center gap-1.5 px-3 py-2 bg-primary-50 text-primary-700 rounded-lg text-sm font-medium hover:bg-primary-100 disabled:opacity-50 transition-colors whitespace-nowrap">
@@ -423,7 +559,7 @@ export function ExamFormatSetupStep({ courseId, examName, onComplete, onSkip }: 
                   <div className="flex gap-2">
                     <input
                       className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                      placeholder="e.g. Add a ranking section, change Section B to 10 questions..."
+                      placeholder="e.g. MCQs should have 5 options, add a ranking section..."
                       value={refineText}
                       onChange={e => setRefineText(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleRefine(); } }}

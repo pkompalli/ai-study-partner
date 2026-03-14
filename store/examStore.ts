@@ -211,7 +211,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     try {
       const { data } = await api.post<{
         name?: string; description?: string; total_marks?: number; time_minutes?: number;
-        sections?: Array<{ name: string; question_type: ExamSection['question_type']; num_questions: number; marks_per_question?: number }>;
+        sections?: Array<{ name: string; question_type: ExamSection['question_type']; num_questions: number; marks_per_question?: number; num_options?: number }>;
       }>('/api/exam/formats/infer', { courseId, examName, description });
       set({ inferredFormat: data });
     } finally {

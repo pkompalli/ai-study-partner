@@ -45,6 +45,7 @@ export async function POST(req: NextRequest) {
         marks_per_question?: number
         total_marks?: number
         instructions?: string
+        num_options?: number
       }>
     }
 
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
     const full = await getExamFormat(format.id, user.id)
     return NextResponse.json(full, { status: 201 })
   } catch (err: unknown) {
+    console.error('[create-format] ERROR:', err)
     const message = err instanceof Error ? err.message : 'Internal error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
