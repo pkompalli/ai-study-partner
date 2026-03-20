@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Compass, BookOpen, Lightbulb, Brain, ChevronLeft, ChevronRight, Bookmark, Check, GraduationCap, CheckCircle2, XCircle, Settings, Minus, Plus, Paperclip, BookMarked } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Lightbulb, Brain, ChevronLeft, ChevronRight, Bookmark, Check, GraduationCap, CheckCircle2, XCircle, Settings, Minus, Plus, Paperclip, BookMarked, Upload, FileText, ArrowRight, RotateCcw } from 'lucide-react';
 import { useSessionStore } from '@/store/sessionStore';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
@@ -542,6 +542,662 @@ function ExamQuestionCard({
   );
 }
 
+// ─── Homework Problem Card ────────────────────────────────────────────────────
+
+function HomeworkProblemCard({
+  problem, index, localAnswer, isMarking, hint, isHintLoading,
+  onSetText, onSubmit, onFetchHint, onClearHint,
+}: {
+  problem: import('@/store/examStore').HomeworkProblem;
+  index: number;
+  localAnswer: { answerText: string; score?: number; feedback?: string; marked: boolean };
+  isMarking: boolean;
+  hint?: { text: string; count: number };
+  isHintLoading: boolean;
+  onSetText: (t: string) => void;
+  onSubmit: (files?: File[]) => void;
+  onFetchHint: (answerText?: string) => void;
+  onClearHint: () => void;
+}) {
+  const [answerFiles, setAnswerFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showSolution, setShowSolution] = useState(false);
+
+  useEffect(() => {
+    if (localAnswer.marked) setAnswerFiles([]);
+  }, [localAnswer.marked]);
+
+  const isMarked = localAnswer.marked;
+  const canSubmit = localAnswer.answerText.trim().length > 0 || answerFiles.length > 0;
+
+  const STYLE_COLORS: Record<string, string> = {
+    conceptual: 'bg-blue-50 text-blue-700 border-blue-200',
+    worked_example: 'bg-purple-50 text-purple-700 border-purple-200',
+    multi_part: 'bg-amber-50 text-amber-700 border-amber-200',
+    application: 'bg-green-50 text-green-700 border-green-200',
+  };
+  const STYLE_LABELS: Record<string, string> = {
+    conceptual: 'Conceptual', worked_example: 'Worked Example',
+    multi_part: 'Multi-Part', application: 'Application',
+  };
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-4 pt-3 pb-2 border-b border-gray-100 flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-gray-400 font-medium">Q{index + 1}</span>
+        <span className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${STYLE_COLORS[problem.problem_style] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+          {STYLE_LABELS[problem.problem_style] ?? problem.problem_style}
+        </span>
+        {problem.topic_name && <span className="text-xs text-gray-400">{problem.topic_name}</span>}
+        {problem.chapter_name && <span className="text-xs text-gray-300">/ {problem.chapter_name}</span>}
+        <span className="ml-auto text-xs text-gray-500">{problem.max_marks}m</span>
+      </div>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Worked example (if present) */}
+        {problem.worked_example && (
+          <div className="bg-purple-50 rounded-lg p-3 border border-purple-200 space-y-1.5">
+            <p className="text-xs font-semibold text-purple-700">Worked example</p>
+            <ReactMarkdown
+              className="prose prose-xs max-w-none text-xs text-purple-900"
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+            >{preprocessLatex(problem.worked_example.problem)}</ReactMarkdown>
+            <div className="border-t border-purple-200 pt-1.5 mt-1.5">
+              <ReactMarkdown
+                className="prose prose-xs max-w-none text-xs text-purple-800"
+                remarkPlugins={[remarkMath, remarkGfm]}
+                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+              >{preprocessLatex(problem.worked_example.solution)}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
+        {/* Dataset */}
+        {problem.dataset && (
+          <div className="bg-gray-50 rounded-lg p-3 text-xs border border-gray-200 overflow-x-auto">
+            <ReactMarkdown
+              className="prose prose-xs max-w-none text-gray-700"
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+            >{preprocessLatex(problem.dataset)}</ReactMarkdown>
+          </div>
+        )}
+
+        {/* Question text */}
+        <div className="text-sm text-gray-900 font-medium leading-relaxed">
+          <ReactMarkdown
+            className="prose prose-sm max-w-none"
+            remarkPlugins={[remarkMath, remarkGfm]}
+            rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+          >{preprocessLatex(problem.question_text)}</ReactMarkdown>
+        </div>
+
+        {/* Answer textarea */}
+        <div className="space-y-2">
+          <textarea
+            rows={3}
+            disabled={isMarked}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-300 disabled:bg-gray-50 disabled:text-gray-600"
+            placeholder="Write your answer..."
+            value={localAnswer.answerText}
+            onChange={e => onSetText(e.target.value)}
+          />
+          {!isMarked && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 cursor-pointer transition-colors">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={e => {
+                    setAnswerFiles(prev => [...prev, ...Array.from(e.target.files ?? [])]);
+                    e.target.value = '';
+                  }}
+                />
+                <Paperclip className="h-3.5 w-3.5" />
+                <span>Attach images / PDF</span>
+              </label>
+              {answerFiles.map((f, i) => (
+                <span key={i} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-0.5 text-xs text-gray-600 max-w-[140px] truncate">
+                  {f.name}
+                  <button type="button" onClick={() => setAnswerFiles(prev => prev.filter((_, j) => j !== i))}
+                    className="ml-1 text-gray-400 hover:text-red-500 flex-shrink-0">×</button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Feedback */}
+        {isMarked && (
+          <div className={`rounded-lg p-3 ${localAnswer.score! >= problem.max_marks ? 'bg-green-50 border border-green-200' : localAnswer.score! > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-red-50 border border-red-200'}`}>
+            <div className="flex items-center gap-2 mb-1">
+              {localAnswer.score! >= problem.max_marks
+                ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                : localAnswer.score! > 0
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-amber-500" />
+                  : <XCircle className="h-3.5 w-3.5 text-red-500" />
+              }
+              <span className="text-xs font-semibold">{localAnswer.score}/{problem.max_marks} marks</span>
+            </div>
+            {localAnswer.feedback && (
+              <ReactMarkdown
+                className="prose prose-xs max-w-none text-xs text-gray-700 leading-relaxed"
+                remarkPlugins={[remarkMath, remarkGfm]}
+                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+              >{preprocessLatex(localAnswer.feedback)}</ReactMarkdown>
+            )}
+          </div>
+        )}
+
+        {/* Hint display */}
+        {hint && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 relative">
+            <button onClick={onClearHint} className="absolute top-2 right-2 text-amber-300 hover:text-amber-500">
+              <XCircle className="h-3.5 w-3.5" />
+            </button>
+            <div className="flex items-start gap-2 pr-5">
+              <Lightbulb className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <ReactMarkdown
+                className="prose prose-xs max-w-none text-xs text-amber-800 leading-relaxed"
+                remarkPlugins={[remarkMath, remarkGfm]}
+                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+              >{preprocessLatex(hint.text)}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
+        {/* Worked solution (toggle) */}
+        {problem.worked_solution && showSolution && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+            <div className="flex items-center gap-1.5 mb-2">
+              <BookMarked className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+              <span className="text-xs font-semibold text-emerald-700">Worked Solution</span>
+            </div>
+            <ReactMarkdown
+              className="prose prose-xs max-w-none text-xs text-emerald-900 leading-relaxed"
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+            >{preprocessLatex(problem.worked_solution)}</ReactMarkdown>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {!isMarked && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onFetchHint(localAnswer.answerText || undefined)}
+              disabled={isHintLoading || (hint?.count ?? 0) >= 3}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 disabled:opacity-40 transition-colors flex-shrink-0"
+            >
+              {isHintLoading ? (
+                <span className="inline-flex items-center gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="h-0.5 w-0.5 rounded-full bg-amber-400" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </span>
+              ) : <Lightbulb className="h-3 w-3 text-amber-500" />}
+              {isHintLoading ? 'Thinking...' : (hint?.count ?? 0) > 0 ? `Hint (${hint!.count}/3)` : 'Hint'}
+            </button>
+            <button
+              onClick={() => setShowSolution(s => !s)}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-50 transition-colors flex-shrink-0"
+            >
+              <BookMarked className="h-3 w-3 text-emerald-600" />
+              {showSolution ? 'Hide Solution' : 'Show Solution'}
+            </button>
+            <button
+              onClick={() => onSubmit(answerFiles.length > 0 ? answerFiles : undefined)}
+              disabled={isMarking || !canSubmit}
+              className="flex-1 py-2 rounded-lg bg-primary-600 text-white text-xs font-semibold hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors"
+            >
+              {isMarking ? (
+                <span className="inline-flex items-center gap-0.5">
+                  {[0, 1, 2].map(i => (
+                    <span key={i} className="h-1 w-1 rounded-full bg-white" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </span>
+              ) : null}
+              {isMarking ? 'Marking...' : 'Submit Answer'}
+            </button>
+          </div>
+        )}
+
+        {/* Show solution after marking */}
+        {isMarked && problem.worked_solution && (
+          <button
+            onClick={() => setShowSolution(s => !s)}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-200 text-xs text-emerald-700 hover:bg-emerald-50 transition-colors"
+          >
+            <BookMarked className="h-3 w-3" />
+            {showSolution ? 'Hide Worked Solution' : 'Show Worked Solution'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Homework Tab ─────────────────────────────────────────────────────────────
+
+function HomeworkTab({
+  mode, problems, problemsLoading, problemsGenerating, problemsError, answers, markingId,
+  hints, hintLoading, difficulty, feedback, feedbackLoading, courseId,
+  topicName, chapterName,
+  onSetMode, onLoadProblems, onLoadMore, onRefresh, onSetAnswerText, onSubmit,
+  onFetchHint, onClearHint, onSetDifficulty, onUploadFeedback, onClear,
+  subjectId, topicId, chapterId,
+}: {
+  mode: 'choose' | 'feedback' | 'practice';
+  problems: import('@/store/examStore').HomeworkProblem[];
+  problemsLoading: boolean;
+  problemsGenerating: boolean;
+  problemsError: string | null;
+  answers: Record<string, { answerText: string; score?: number; feedback?: string; marked: boolean }>;
+  markingId: string | null;
+  hints: Record<string, { text: string; count: number }>;
+  hintLoading: string | null;
+  difficulty: number;
+  feedback: import('@/store/examStore').HomeworkFeedback | null;
+  feedbackLoading: boolean;
+  courseId: string;
+  topicName?: string;
+  chapterName?: string;
+  onSetMode: (m: 'choose' | 'feedback' | 'practice') => void;
+  onLoadProblems: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => void;
+  onLoadMore: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => void;
+  onRefresh: (courseId: string, difficulty: number, subjectId?: string, topicId?: string, chapterId?: string, force?: boolean) => void;
+  onSetAnswerText: (id: string, t: string) => void;
+  onSubmit: (id: string, files?: File[]) => void;
+  onFetchHint: (id: string, answerText?: string) => void;
+  onClearHint: (id: string) => void;
+  onSetDifficulty: (d: number) => void;
+  onUploadFeedback: (courseId: string, files: File[], topicName?: string, chapterName?: string) => void;
+  onClear: () => void;
+  subjectId?: string;
+  topicId?: string;
+  chapterId?: string;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Choose mode ──
+  if (mode === 'choose') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+        <div className="text-center space-y-2">
+          <BookMarked className="h-8 w-8 text-primary-300 mx-auto" />
+          <p className="text-sm font-semibold text-gray-700">Homework</p>
+          <p className="text-xs text-gray-400">Choose how you want to practice</p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 w-full max-w-md">
+          <button
+            onClick={() => onSetMode('feedback')}
+            className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-gray-200 hover:border-primary-300 hover:bg-primary-50/50 transition-colors text-center group"
+          >
+            <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+              <Upload className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Get feedback</p>
+              <p className="text-xs text-gray-400 mt-1">Upload your work for analysis</p>
+            </div>
+          </button>
+          <button
+            onClick={() => onSetMode('practice')}
+            className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-gray-200 hover:border-primary-300 hover:bg-primary-50/50 transition-colors text-center group"
+          >
+            <div className="h-10 w-10 rounded-xl bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
+              <FileText className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Practice problems</p>
+              <p className="text-xs text-gray-400 mt-1">AI-generated homework questions</p>
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Feedback mode ──
+  if (mode === 'feedback') {
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+          <button onClick={onClear} className="p-1 rounded hover:bg-gray-100">
+            <ArrowLeft className="h-3.5 w-3.5 text-gray-500" />
+          </button>
+          <Upload className="h-4 w-4 text-blue-500" />
+          <span className="text-sm font-semibold text-gray-700">Get feedback on your work</span>
+        </div>
+
+        <div className="px-4 py-4 space-y-4">
+          {/* Upload area */}
+          {!feedback && !feedbackLoading && (
+            <>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  const droppedFiles = Array.from(e.dataTransfer.files).filter(
+                    f => f.type.startsWith('image/') || f.type === 'application/pdf'
+                  );
+                  setUploadFiles(prev => [...prev, ...droppedFiles]);
+                }}
+                className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+                  dragOver ? 'border-primary-400 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <Upload className="h-6 w-6 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-600 font-medium">Drop files here or click to browse</p>
+                <p className="text-xs text-gray-400 mt-1">Images or PDFs of your homework</p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-3 px-4 py-2 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 transition-colors"
+                >
+                  Browse files
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={e => {
+                    setUploadFiles(prev => [...prev, ...Array.from(e.target.files ?? [])]);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
+              {uploadFiles.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-500">{uploadFiles.length} file{uploadFiles.length > 1 ? 's' : ''} selected</p>
+                  <div className="flex flex-wrap gap-2">
+                    {uploadFiles.map((f, i) => (
+                      <span key={i} className="flex items-center gap-1.5 bg-gray-100 rounded-lg px-2.5 py-1 text-xs text-gray-600">
+                        <FileText className="h-3 w-3 text-gray-400" />
+                        <span className="max-w-[120px] truncate">{f.name}</span>
+                        <button onClick={() => setUploadFiles(prev => prev.filter((_, j) => j !== i))}
+                          className="text-gray-400 hover:text-red-500">×</button>
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      onUploadFeedback(courseId, uploadFiles, topicName, chapterName);
+                      setUploadFiles([]);
+                    }}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors"
+                  >
+                    <Upload className="h-4 w-4" /> Analyse my work
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Loading state */}
+          {feedbackLoading && (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="relative">
+                <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-200">
+                  <Upload className="h-7 w-7 text-white" />
+                </div>
+                <div className="absolute inset-0 rounded-2xl bg-blue-400/20 animate-ping" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-gray-700">Analysing your work</p>
+                <p className="text-xs text-gray-400">This may take a moment...</p>
+              </div>
+              <div className="flex gap-1">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="h-1.5 w-1.5 rounded-full bg-blue-400" style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Feedback results */}
+          {feedback && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-sm font-semibold text-blue-800 mb-1">Summary</p>
+                <p className="text-sm text-blue-700 leading-relaxed">{feedback.summary}</p>
+                {feedback.score_estimate && (
+                  <p className="text-xs text-blue-500 mt-2 font-medium">Estimated score: {feedback.score_estimate}</p>
+                )}
+              </div>
+
+              {/* Strengths */}
+              {feedback.strengths.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-green-800 mb-2 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> Strengths
+                  </p>
+                  <div className="space-y-2">
+                    {feedback.strengths.map((s, i) => (
+                      <div key={i}>
+                        <p className="text-xs font-semibold text-green-700">{s.area}</p>
+                        <p className="text-xs text-green-600">{s.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Areas to improve */}
+              {feedback.areas_to_improve.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
+                    <Lightbulb className="h-4 w-4" /> Areas to improve
+                  </p>
+                  <div className="space-y-2">
+                    {feedback.areas_to_improve.map((a, i) => (
+                      <div key={i}>
+                        <p className="text-xs font-semibold text-amber-700">{a.area}</p>
+                        <p className="text-xs text-amber-600">{a.detail}</p>
+                        <p className="text-xs text-amber-500 italic mt-0.5">{a.suggestion}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Misconceptions */}
+              {feedback.misconceptions.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-red-800 mb-2 flex items-center gap-1.5">
+                    <XCircle className="h-4 w-4" /> Misconceptions
+                  </p>
+                  <div className="space-y-2">
+                    {feedback.misconceptions.map((m, i) => (
+                      <div key={i}>
+                        <p className="text-xs font-semibold text-red-700">{m.concept}</p>
+                        <p className="text-xs text-red-600">What you did: {m.what_student_did}</p>
+                        <p className="text-xs text-red-500 mt-0.5">Correction: {m.correction}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Topics to review */}
+              {feedback.topics_to_review.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Topics to review</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {feedback.topics_to_review.map((t, i) => (
+                      <span key={i} className="px-2.5 py-1 rounded-full bg-gray-200 text-xs text-gray-600 font-medium">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Next steps */}
+              {feedback.next_steps && (
+                <div className="bg-primary-50 border border-primary-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-primary-800 mb-1 flex items-center gap-1.5">
+                    <ArrowRight className="h-4 w-4" /> Next steps
+                  </p>
+                  <p className="text-sm text-primary-700 leading-relaxed">{feedback.next_steps}</p>
+                </div>
+              )}
+
+              {/* Try again */}
+              <button
+                onClick={onClear}
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Upload different work
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Practice mode ──
+  if (problemsLoading) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <div className="relative">
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-green-500 to-green-700 flex items-center justify-center shadow-lg shadow-green-200">
+            <FileText className="h-7 w-7 text-white" />
+          </div>
+          <div className="absolute inset-0 rounded-2xl bg-green-400/20 animate-ping" />
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-gray-700">Generating practice problems</p>
+          <p className="text-xs text-gray-400">Tailoring to your topic...</p>
+        </div>
+        <div className="flex gap-1">
+          {[0, 1, 2].map(i => (
+            <span key={i} className="h-1.5 w-1.5 rounded-full bg-green-400" style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (problems.length === 0) {
+    return (
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+          <button onClick={onClear} className="p-1 rounded hover:bg-gray-100">
+            <ArrowLeft className="h-3.5 w-3.5 text-gray-500" />
+          </button>
+          <FileText className="h-4 w-4 text-green-500" />
+          <span className="text-sm font-semibold text-gray-700">Practice problems</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center py-12">
+          <FileText className="h-8 w-8 text-gray-200" />
+          <p className="text-sm font-semibold text-gray-700">Set difficulty and generate</p>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500 font-medium">Difficulty:</span>
+            <button onClick={() => onSetDifficulty(Math.max(1, difficulty - 1))} disabled={difficulty <= 1}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-opacity">
+              <Minus className="h-3.5 w-3.5 text-gray-600" />
+            </button>
+            <span className="text-xs font-semibold text-primary-700 min-w-[80px] text-center">
+              {difficulty} — {DIFFICULTY_LABELS[difficulty]}
+            </span>
+            <button onClick={() => onSetDifficulty(Math.min(5, difficulty + 1))} disabled={difficulty >= 5}
+              className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-opacity">
+              <Plus className="h-3.5 w-3.5 text-gray-600" />
+            </button>
+          </div>
+          <button
+            onClick={() => onLoadProblems(courseId, subjectId, topicId, chapterId)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors"
+          >
+            <FileText className="h-4 w-4" /> Generate Problems
+          </button>
+          {problemsError && (
+            <p className="text-xs text-red-500 max-w-xs">Error: {problemsError}</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Show problems
+  return (
+    <div className="flex-1 overflow-y-auto">
+      {/* Difficulty + Regenerate + More bar (same pattern as Exam Prep) */}
+      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-2.5 bg-white border-b border-gray-100">
+        <button onClick={onClear} className="p-1 rounded hover:bg-gray-100" title="Back">
+          <ArrowLeft className="h-3.5 w-3.5 text-gray-500" />
+        </button>
+        <span className="text-xs text-gray-500 font-medium">Difficulty:</span>
+        <button onClick={() => onRefresh(courseId, difficulty - 1, subjectId, topicId, chapterId)} disabled={difficulty <= 1 || problemsLoading}
+          className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-opacity">
+          <Minus className="h-3.5 w-3.5 text-gray-600" />
+        </button>
+        <span className="text-xs font-semibold text-primary-700 min-w-[80px] text-center">
+          {difficulty} — {DIFFICULTY_LABELS[difficulty]}
+        </span>
+        <button onClick={() => onRefresh(courseId, difficulty + 1, subjectId, topicId, chapterId)} disabled={difficulty >= 5 || problemsLoading}
+          className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 transition-opacity">
+          <Plus className="h-3.5 w-3.5 text-gray-600" />
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => onRefresh(courseId, difficulty, subjectId, topicId, chapterId, true)}
+            disabled={problemsLoading || problemsGenerating}
+            title="Regenerate fresh problems"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-600 border border-gray-200 rounded-lg text-xs font-semibold hover:bg-gray-50 disabled:opacity-60 transition-colors"
+          >
+            <RotateCcw className="h-3 w-3" /> Regenerate
+          </button>
+          <button
+            onClick={() => onLoadMore(courseId, subjectId, topicId, chapterId)}
+            disabled={problemsGenerating}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-semibold hover:bg-primary-700 disabled:opacity-60 transition-colors"
+          >
+            {problemsGenerating ? (
+              <span className="inline-flex items-center gap-0.5">
+                {[0, 1, 2].map(i => (
+                  <span key={i} className="h-1 w-1 rounded-full bg-white" style={{ animation: 'pulse 1s ease-in-out infinite', animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </span>
+            ) : null}
+            {problemsGenerating ? 'Generating...' : '5 more ↓'}
+          </button>
+        </div>
+      </div>
+
+      {/* Problems */}
+      <div className="px-4 py-3 space-y-4">
+        {problems.map((problem, pi) => (
+          <HomeworkProblemCard
+            key={problem.id}
+            problem={problem}
+            index={pi}
+            localAnswer={answers[problem.id] ?? { answerText: '', marked: false }}
+            isMarking={markingId === problem.id}
+            hint={hints[problem.id]}
+            isHintLoading={hintLoading === problem.id}
+            onSetText={(t) => onSetAnswerText(problem.id, t)}
+            onSubmit={(files) => onSubmit(problem.id, files)}
+            onFetchHint={(answerText) => onFetchHint(problem.id, answerText)}
+            onClearHint={() => onClearHint(problem.id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Session Page ──────────────────────────────────────────────────────────────
 
 export default function SessionPage() {
@@ -570,11 +1226,21 @@ export default function SessionPage() {
     setSessionAnswerText, setSessionSelectedOption, submitSessionAnswer,
     fetchSessionHint, clearSessionHint,
     persistExamState, restoreExamState, clearSessionExam,
+    // Homework
+    homeworkMode, setHomeworkMode,
+    homeworkProblems, homeworkProblemsLoading, homeworkProblemsGenerating, homeworkProblemsError,
+    homeworkAnswers, homeworkMarkingId, homeworkHints, homeworkHintLoading,
+    homeworkDifficulty, homeworkFeedback, homeworkFeedbackLoading,
+    loadHomeworkProblems, loadMoreHomeworkProblems, refreshHomeworkProblems,
+    setHomeworkAnswerText, submitHomeworkAnswer,
+    fetchHomeworkHint, clearHomeworkHint, setHomeworkDifficulty,
+    uploadHomeworkForFeedback, clearHomework,
+    persistHomeworkState, restoreHomeworkState, clearHomeworkSession,
   } = useExamStore();
 
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
-  const [centerTab, setCenterTab] = useState<'study' | 'exam'>('study');
+  const [centerTab, setCenterTab] = useState<'study' | 'homework' | 'exam'>('study');
 
   // Panel toggle
   const [rightOpen, setRightOpen] = useState(true);
@@ -606,12 +1272,12 @@ export default function SessionPage() {
   const prevSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!id) return;
-    // Persist exam state for the previous session before clearing
+    // Persist exam + homework state for the previous session before clearing
     if (prevSessionIdRef.current && prevSessionIdRef.current !== id) {
-      const { sessionBatch } = useExamStore.getState();
+      const { sessionBatch, homeworkProblems } = useExamStore.getState();
+      const prevSession = useSessionStore.getState().activeSession;
       if (sessionBatch.length > 0) {
         persistExamState(prevSessionIdRef.current);
-        const prevSession = useSessionStore.getState().activeSession;
         if (prevSession?.chapter_id) {
           persistExamState(`chapter_${prevSession.chapter_id}`);
         } else if (prevSession?.topic_id) {
@@ -620,12 +1286,23 @@ export default function SessionPage() {
           persistExamState(`subject_${prevSession.subject_id}`);
         }
       }
+      if (homeworkProblems.length > 0) {
+        persistHomeworkState(prevSessionIdRef.current);
+        if (prevSession?.chapter_id) {
+          persistHomeworkState(`chapter_${prevSession.chapter_id}`);
+        } else if (prevSession?.topic_id) {
+          persistHomeworkState(`topic_${prevSession.topic_id}`);
+        } else if (prevSession?.subject_id) {
+          persistHomeworkState(`subject_${prevSession.subject_id}`);
+        }
+      }
     }
     prevSessionIdRef.current = id;
 
     // Clear stale state immediately — restore happens after loadSession resolves
     // (see the loadSession effect below) so we have the correct topic_id
     clearSessionExam();
+    clearHomeworkSession();
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -652,6 +1329,11 @@ export default function SessionPage() {
         || (topicKey ? restoreExamState(topicKey) : false)
         || (subjectKey ? restoreExamState(subjectKey) : false)
         || restoreExamState(id);
+      // Restore homework state
+      (chapterKey ? restoreHomeworkState(chapterKey) : false)
+        || (topicKey ? restoreHomeworkState(topicKey) : false)
+        || (subjectKey ? restoreHomeworkState(subjectKey) : false)
+        || restoreHomeworkState(id);
     });
 
     // Mark session as loaded once loadSession resolves (don't wait for summary)
@@ -661,11 +1343,11 @@ export default function SessionPage() {
 
     return () => {
       cancelled = true;
-      // Persist exam state when leaving this session
-      const { sessionBatch } = useExamStore.getState();
+      // Persist exam + homework state when leaving this session
+      const { sessionBatch, homeworkProblems } = useExamStore.getState();
+      const session = useSessionStore.getState().activeSession;
       if (sessionBatch.length > 0) {
         persistExamState(id);
-        const session = useSessionStore.getState().activeSession;
         // Persist under most specific key: chapter > topic > subject
         if (session?.chapter_id) {
           persistExamState(`chapter_${session.chapter_id}`);
@@ -675,7 +1357,18 @@ export default function SessionPage() {
           persistExamState(`subject_${session.subject_id}`);
         }
       }
+      if (homeworkProblems.length > 0) {
+        persistHomeworkState(id);
+        if (session?.chapter_id) {
+          persistHomeworkState(`chapter_${session.chapter_id}`);
+        } else if (session?.topic_id) {
+          persistHomeworkState(`topic_${session.topic_id}`);
+        } else if (session?.subject_id) {
+          persistHomeworkState(`subject_${session.subject_id}`);
+        }
+      }
       clearSessionExam();
+      clearHomeworkSession();
     };
   }, [id, loadSession, fetchSummary, fetchCourse, fetchFormats, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -873,6 +1566,12 @@ export default function SessionPage() {
               <BookOpen className="h-3.5 w-3.5" /> Study
             </button>
             <button
+              onClick={() => setCenterTab('homework')}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${centerTab === 'homework' ? 'border-primary-500 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              <BookMarked className="h-3.5 w-3.5" /> Homework
+            </button>
+            <button
               onClick={handleOpenExamTab}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${centerTab === 'exam' ? 'border-primary-500 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
@@ -947,6 +1646,41 @@ export default function SessionPage() {
             </>
           )}
 
+          {/* HOMEWORK TAB */}
+          {centerTab === 'homework' && (
+            <HomeworkTab
+              mode={homeworkMode}
+              problems={homeworkProblems}
+              problemsLoading={homeworkProblemsLoading}
+              problemsGenerating={homeworkProblemsGenerating}
+              problemsError={homeworkProblemsError}
+              answers={homeworkAnswers}
+              markingId={homeworkMarkingId}
+              hints={homeworkHints}
+              hintLoading={homeworkHintLoading}
+              difficulty={homeworkDifficulty}
+              feedback={homeworkFeedback}
+              feedbackLoading={homeworkFeedbackLoading}
+              courseId={activeSession?.course_id ?? ''}
+              topicName={activeSession?.title}
+              chapterName={undefined}
+              onSetMode={setHomeworkMode}
+              onLoadProblems={loadHomeworkProblems}
+              onLoadMore={loadMoreHomeworkProblems}
+              onRefresh={refreshHomeworkProblems}
+              onSetAnswerText={setHomeworkAnswerText}
+              onSubmit={(id, files) => submitHomeworkAnswer(id, files)}
+              onFetchHint={(id, answerText) => fetchHomeworkHint(id, answerText)}
+              onClearHint={clearHomeworkHint}
+              onSetDifficulty={setHomeworkDifficulty}
+              onUploadFeedback={uploadHomeworkForFeedback}
+              onClear={clearHomework}
+              subjectId={activeSession?.subject_id}
+              topicId={activeSession?.topic_id}
+              chapterId={activeSession?.chapter_id}
+            />
+          )}
+
           {/* EXAM PRACTICE TAB */}
           {centerTab === 'exam' && (
             <ExamPrepTab
@@ -982,7 +1716,7 @@ export default function SessionPage() {
         {rightOpen && (
           <div className="w-80 flex-shrink-0 border-l border-gray-100 flex flex-col min-h-0">
 
-            {/* MCQ — 65%, hidden when in Exam Prep tab */}
+            {/* MCQ — 65%, hidden when in Exam Prep or Homework tab */}
             {centerTab === 'study' && <div className="flex flex-col border-b border-gray-100 min-h-0 overflow-hidden" style={{ flex: 65 }}>
               {/* Header with history navigation */}
               <div className="px-3 py-2 border-b border-gray-100 bg-orange-50 flex-shrink-0 flex items-center gap-1">
@@ -1096,7 +1830,7 @@ export default function SessionPage() {
             {(() => {
               const savedCards = activeFlashcards?.cards ?? [];
               return (
-                <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: centerTab === 'exam' ? 1 : 35 }}>
+                <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: centerTab === 'study' ? 35 : 1 }}>
                   {reviewMode ? (
                     <>
                       <div className="px-3 py-2 border-b border-gray-100 bg-gray-50 flex-shrink-0 flex items-center gap-2">

@@ -32,6 +32,29 @@ export interface PaperPreview {
   questions_truncated: boolean;
 }
 
+export interface HomeworkProblem {
+  id: string;
+  question_text: string;
+  dataset?: string;
+  max_marks: number;
+  mark_scheme: MarkCriterion[];
+  worked_solution: string;
+  worked_example?: { problem: string; solution: string };
+  problem_style: string;
+  topic_name: string;
+  chapter_name?: string;
+}
+
+export interface HomeworkFeedback {
+  summary: string;
+  score_estimate: string;
+  strengths: Array<{ area: string; detail: string }>;
+  areas_to_improve: Array<{ area: string; detail: string; suggestion: string }>;
+  misconceptions: Array<{ concept: string; what_student_did: string; correction: string }>;
+  topics_to_review: string[];
+  next_steps: string;
+}
+
 interface ExamState {
   // Format management
   formats: ExamFormat[];
@@ -145,6 +168,36 @@ interface ExamState {
   clearExtractedPaper: () => void;
   importPaper: (courseId: string) => Promise<ExamFormat>;
 
+  // Homework tab
+  homeworkMode: 'choose' | 'feedback' | 'practice';
+  homeworkProblems: HomeworkProblem[];
+  homeworkProblemsLoading: boolean;
+  homeworkProblemsGenerating: boolean;
+  homeworkProblemsError: string | null;
+  homeworkAnswers: Record<string, { answerText: string; score?: number; feedback?: string; marked: boolean }>;
+  homeworkMarkingId: string | null;
+  homeworkHints: Record<string, { text: string; count: number }>;
+  homeworkHintLoading: string | null;
+  homeworkDifficulty: number;
+  homeworkFeedback: HomeworkFeedback | null;
+  homeworkFeedbackLoading: boolean;
+
+  // Homework actions
+  setHomeworkMode: (mode: 'choose' | 'feedback' | 'practice') => void;
+  loadHomeworkProblems: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<void>;
+  loadMoreHomeworkProblems: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<void>;
+  refreshHomeworkProblems: (courseId: string, difficulty: number, subjectId?: string, topicId?: string, chapterId?: string, force?: boolean) => Promise<void>;
+  setHomeworkAnswerText: (problemId: string, text: string) => void;
+  submitHomeworkAnswer: (problemId: string, files?: File[]) => Promise<void>;
+  fetchHomeworkHint: (problemId: string, answerText?: string) => Promise<void>;
+  clearHomeworkHint: (problemId: string) => void;
+  setHomeworkDifficulty: (d: number) => void;
+  uploadHomeworkForFeedback: (courseId: string, files: File[], topicName?: string, chapterName?: string) => Promise<void>;
+  clearHomework: () => void;
+  persistHomeworkState: (sessionId: string) => void;
+  restoreHomeworkState: (sessionId: string) => boolean;
+  clearHomeworkSession: () => void;
+
   // Session exam tab actions
   loadSessionBatch: (formatId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<void>;
   loadMoreSessionBatch: (formatId: string, subjectId?: string, topicId?: string, chapterId?: string) => Promise<void>;
@@ -195,6 +248,18 @@ export const useExamStore = create<ExamState>((set, get) => ({
   requestedCount: 5,
   sessionFullAnswers: {},
   sessionFullAnswerLoading: null,
+  homeworkMode: 'choose',
+  homeworkProblems: [],
+  homeworkProblemsLoading: false,
+  homeworkProblemsGenerating: false,
+  homeworkProblemsError: null,
+  homeworkAnswers: {},
+  homeworkMarkingId: null,
+  homeworkHints: {},
+  homeworkHintLoading: null,
+  homeworkDifficulty: 3,
+  homeworkFeedback: null,
+  homeworkFeedbackLoading: false,
 
   fetchFormats: async (courseId) => {
     set({ formatsLoading: true });
@@ -797,4 +862,252 @@ export const useExamStore = create<ExamState>((set, get) => ({
     set(state => ({ formats: [data, ...state.formats], extractedPaper: null }));
     return data;
   },
+
+  // ─── Homework actions ───────────────────────────────────────────────────────
+
+  setHomeworkMode: (mode) => set({ homeworkMode: mode }),
+
+  loadHomeworkProblems: async (courseId, subjectId, topicId, chapterId) => {
+    set({ homeworkProblemsLoading: true, homeworkProblemsError: null });
+    try {
+      const { homeworkDifficulty } = get();
+      const { data } = await api.post<{ problems: HomeworkProblem[] }>('/api/homework/problems', {
+        courseId, count: 5, difficulty: homeworkDifficulty, subjectId, topicId, chapterId,
+      });
+      set({
+        homeworkProblems: data.problems ?? [],
+        homeworkAnswers: {},
+        homeworkHints: {},
+        homeworkProblemsError: null,
+      });
+    } catch (err: unknown) {
+      const axiosData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      const msg = axiosData?.error ?? (err instanceof Error ? err.message : 'Failed to generate problems');
+      set({ homeworkProblemsError: msg });
+    } finally {
+      set({ homeworkProblemsLoading: false });
+    }
+  },
+
+  loadMoreHomeworkProblems: async (courseId, subjectId, topicId, chapterId) => {
+    set({ homeworkProblemsGenerating: true });
+    try {
+      const { homeworkDifficulty, homeworkProblems } = get();
+      const { data } = await api.post<{ problems: HomeworkProblem[] }>('/api/homework/problems', {
+        courseId, count: 5, difficulty: homeworkDifficulty, subjectId, topicId, chapterId,
+      });
+      const newProblems = data.problems ?? [];
+      set({
+        homeworkProblems: [...homeworkProblems, ...newProblems],
+        // answers/hints NOT cleared — preserved
+      });
+    } finally {
+      set({ homeworkProblemsGenerating: false });
+    }
+  },
+
+  refreshHomeworkProblems: async (courseId, newDifficulty, subjectId, topicId, chapterId, force) => {
+    const clamped = Math.max(1, Math.min(5, newDifficulty));
+    if (!force && clamped === get().homeworkDifficulty && get().homeworkProblems.length > 0) return;
+    set({
+      homeworkDifficulty: clamped,
+      homeworkProblems: [],
+      homeworkAnswers: {},
+      homeworkHints: {},
+      homeworkProblemsLoading: true,
+      homeworkProblemsError: null,
+    });
+    try {
+      const { data } = await api.post<{ problems: HomeworkProblem[] }>('/api/homework/problems', {
+        courseId, count: 5, difficulty: clamped, subjectId, topicId, chapterId,
+      });
+      set({ homeworkProblems: data.problems ?? [] });
+    } catch (err: unknown) {
+      const axiosData = (err as { response?: { data?: { error?: string } } })?.response?.data;
+      const msg = axiosData?.error ?? (err instanceof Error ? err.message : 'Failed to generate problems');
+      set({ homeworkProblemsError: msg });
+    } finally {
+      set({ homeworkProblemsLoading: false });
+    }
+  },
+
+  setHomeworkAnswerText: (problemId, text) => {
+    set(state => ({
+      homeworkAnswers: { ...state.homeworkAnswers, [problemId]: { ...state.homeworkAnswers[problemId], answerText: text, marked: false } },
+    }));
+  },
+
+  submitHomeworkAnswer: async (problemId, files) => {
+    const { homeworkProblems, homeworkAnswers } = get();
+    const problem = homeworkProblems.find(p => p.id === problemId);
+    if (!problem) return;
+
+    const local = homeworkAnswers[problemId] ?? { answerText: '', marked: false };
+    set({ homeworkMarkingId: problemId });
+
+    try {
+      const form = new FormData();
+      form.append('questionText', problem.question_text);
+      if (local.answerText) form.append('answerText', local.answerText);
+      form.append('maxMarks', String(problem.max_marks));
+      form.append('markScheme', JSON.stringify(problem.mark_scheme));
+      if (problem.worked_solution) form.append('workedSolution', problem.worked_solution);
+      files?.forEach(f => form.append('files', f));
+
+      const { data } = await api.post<{ score: number; feedback: string }>('/api/homework/mark', form);
+      set(state => ({
+        homeworkAnswers: {
+          ...state.homeworkAnswers,
+          [problemId]: { ...local, score: data.score, feedback: data.feedback, marked: true },
+        },
+        homeworkMarkingId: null,
+      }));
+    } catch {
+      set({ homeworkMarkingId: null });
+    }
+  },
+
+  fetchHomeworkHint: async (problemId, answerText) => {
+    const { homeworkProblems, homeworkHints } = get();
+    const problem = homeworkProblems.find(p => p.id === problemId);
+    if (!problem) return;
+
+    const current = homeworkHints[problemId];
+    if (current && current.count >= 3) return;
+
+    set({ homeworkHintLoading: problemId });
+    try {
+      const { data } = await api.post<{ hint: string }>('/api/homework/hint', {
+        questionText: problem.question_text,
+        answerText,
+        hintsUsed: current?.count ?? 0,
+        workedSolution: problem.worked_solution,
+      });
+      set(state => ({
+        homeworkHints: {
+          ...state.homeworkHints,
+          [problemId]: {
+            text: (current?.text ? current.text + '\n\n---\n\n' : '') + data.hint,
+            count: (current?.count ?? 0) + 1,
+          },
+        },
+        homeworkHintLoading: null,
+      }));
+    } catch {
+      set({ homeworkHintLoading: null });
+    }
+  },
+
+  clearHomeworkHint: (problemId) => {
+    set(state => {
+      const hints = { ...state.homeworkHints };
+      delete hints[problemId];
+      return { homeworkHints: hints };
+    });
+  },
+
+  setHomeworkDifficulty: (d) => set({ homeworkDifficulty: d }),
+
+  uploadHomeworkForFeedback: async (courseId, files, topicName, chapterName) => {
+    set({ homeworkFeedbackLoading: true, homeworkFeedback: null });
+    try {
+      const form = new FormData();
+      form.append('courseId', courseId);
+      if (topicName) form.append('topicName', topicName);
+      if (chapterName) form.append('chapterName', chapterName);
+      files.forEach(f => form.append('files', f));
+
+      const { data } = await api.post<HomeworkFeedback>('/api/homework/feedback', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      set({ homeworkFeedback: data });
+    } finally {
+      set({ homeworkFeedbackLoading: false });
+    }
+  },
+
+  clearHomework: () => set({
+    homeworkMode: 'choose',
+    homeworkProblems: [],
+    homeworkAnswers: {},
+    homeworkHints: {},
+    homeworkHintLoading: null,
+    homeworkMarkingId: null,
+    homeworkProblemsLoading: false,
+    homeworkProblemsGenerating: false,
+    homeworkProblemsError: null,
+    homeworkFeedback: null,
+    homeworkFeedbackLoading: false,
+  }),
+
+  persistHomeworkState: (sessionId) => {
+    const { homeworkProblems, homeworkAnswers, homeworkHints, homeworkDifficulty, homeworkMode } = get();
+    if (homeworkProblems.length === 0) return;
+    const payload = {
+      schemaVersion: EXAM_CACHE_SCHEMA_VERSION,
+      persistedAt: Date.now(),
+      homeworkProblems,
+      homeworkAnswers,
+      homeworkHints,
+      homeworkDifficulty,
+      homeworkMode,
+    };
+    try {
+      localStorage.setItem('homework_practice_' + sessionId, JSON.stringify(payload));
+    } catch { /* quota exceeded — silently fail */ }
+  },
+
+  restoreHomeworkState: (sessionId) => {
+    try {
+      const raw = localStorage.getItem('homework_practice_' + sessionId);
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as {
+        schemaVersion?: number;
+        persistedAt?: number;
+        homeworkProblems?: HomeworkProblem[];
+        homeworkAnswers?: Record<string, { answerText: string; score?: number; feedback?: string; marked: boolean }>;
+        homeworkHints?: Record<string, { text: string; count: number }>;
+        homeworkDifficulty?: number;
+        homeworkMode?: 'choose' | 'feedback' | 'practice';
+      };
+
+      if (parsed.schemaVersion !== EXAM_CACHE_SCHEMA_VERSION || typeof parsed.persistedAt !== 'number') {
+        localStorage.removeItem('homework_practice_' + sessionId);
+        return false;
+      }
+      if (Date.now() - parsed.persistedAt > EXAM_CACHE_TTL_MS) {
+        localStorage.removeItem('homework_practice_' + sessionId);
+        return false;
+      }
+      if (!Array.isArray(parsed.homeworkProblems) || parsed.homeworkProblems.length === 0) return false;
+
+      set({
+        homeworkProblems: parsed.homeworkProblems,
+        homeworkAnswers: parsed.homeworkAnswers ?? {},
+        homeworkHints: parsed.homeworkHints ?? {},
+        homeworkDifficulty: parsed.homeworkDifficulty ?? 3,
+        homeworkMode: parsed.homeworkMode ?? 'practice',
+        homeworkProblemsLoading: false,
+        homeworkProblemsGenerating: false,
+        homeworkProblemsError: null,
+        homeworkMarkingId: null,
+        homeworkHintLoading: null,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  clearHomeworkSession: () => set({
+    homeworkProblems: [],
+    homeworkAnswers: {},
+    homeworkHints: {},
+    homeworkHintLoading: null,
+    homeworkMarkingId: null,
+    homeworkProblemsLoading: false,
+    homeworkProblemsGenerating: false,
+    homeworkProblemsError: null,
+    homeworkMode: 'choose',
+  }),
 }));
