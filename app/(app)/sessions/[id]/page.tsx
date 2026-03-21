@@ -785,10 +785,11 @@ function HomeworkProblemCard({
 
 function HomeworkTab({
   mode, problems, problemsLoading, problemsGenerating, problemsError, answers, markingId,
-  hints, hintLoading, difficulty, feedback, feedbackLoading, courseId,
-  topicName, chapterName,
+  hints, hintLoading, difficulty, feedback, feedbackLoading, feedbackError, courseId,
+  topicName, chapterName, sessionId,
+  submissions, submissionsLoading,
   onSetMode, onLoadProblems, onLoadMore, onRefresh, onSetAnswerText, onSubmit,
-  onFetchHint, onClearHint, onSetDifficulty, onUploadFeedback, onClear,
+  onFetchHint, onClearHint, onSetDifficulty, onUploadFeedback, onViewSubmission, onClear,
   subjectId, topicId, chapterId,
 }: {
   mode: 'choose' | 'feedback' | 'practice';
@@ -803,9 +804,13 @@ function HomeworkTab({
   difficulty: number;
   feedback: import('@/store/examStore').HomeworkFeedback | null;
   feedbackLoading: boolean;
+  feedbackError: string | null;
   courseId: string;
   topicName?: string;
   chapterName?: string;
+  sessionId?: string;
+  submissions: import('@/store/examStore').HomeworkSubmissionSummary[];
+  submissionsLoading: boolean;
   onSetMode: (m: 'choose' | 'feedback' | 'practice') => void;
   onLoadProblems: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => void;
   onLoadMore: (courseId: string, subjectId?: string, topicId?: string, chapterId?: string) => void;
@@ -815,7 +820,8 @@ function HomeworkTab({
   onFetchHint: (id: string, answerText?: string) => void;
   onClearHint: (id: string) => void;
   onSetDifficulty: (d: number) => void;
-  onUploadFeedback: (courseId: string, files: File[], topicName?: string, chapterName?: string) => void;
+  onUploadFeedback: (courseId: string, files: File[], opts?: { topicName?: string; chapterName?: string; sessionId?: string; topicId?: string; chapterId?: string }) => void;
+  onViewSubmission: (submissionId: string) => void;
   onClear: () => void;
   subjectId?: string;
   topicId?: string;
@@ -825,40 +831,87 @@ function HomeworkTab({
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Choose mode ──
+  // ── Choose mode — unified landing: past submissions + action buttons ──
   if (mode === 'choose') {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
-        <div className="text-center space-y-2">
-          <BookMarked className="h-8 w-8 text-primary-300 mx-auto" />
-          <p className="text-sm font-semibold text-gray-700">Homework</p>
-          <p className="text-xs text-gray-400">Choose how you want to practice</p>
-        </div>
-        <div className="grid grid-cols-2 gap-4 w-full max-w-md">
-          <button
-            onClick={() => onSetMode('feedback')}
-            className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-gray-200 hover:border-primary-300 hover:bg-primary-50/50 transition-colors text-center group"
-          >
-            <div className="h-10 w-10 rounded-xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-              <Upload className="h-5 w-5 text-blue-600" />
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 py-4 space-y-5">
+          {/* Action buttons — always visible at top */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => onSetMode('feedback')}
+              className="flex-1 flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 transition-colors group"
+            >
+              <div className="h-9 w-9 rounded-lg bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition-colors flex-shrink-0">
+                <Upload className="h-4 w-4 text-blue-600" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-gray-700">Get feedback</p>
+                <p className="text-xs text-gray-400">Upload your work</p>
+              </div>
+            </button>
+            <button
+              onClick={() => onSetMode('practice')}
+              className="flex-1 flex items-center gap-2.5 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-green-300 hover:bg-green-50/50 transition-colors group"
+            >
+              <div className="h-9 w-9 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors flex-shrink-0">
+                <FileText className="h-4 w-4 text-green-600" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-gray-700">Practice problems</p>
+                <p className="text-xs text-gray-400">AI-generated questions</p>
+              </div>
+            </button>
+          </div>
+
+          {/* Past submissions list */}
+          {submissionsLoading && (
+            <div className="flex items-center justify-center py-6">
+              <Spinner />
             </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-700">Get feedback</p>
-              <p className="text-xs text-gray-400 mt-1">Upload your work for analysis</p>
+          )}
+          {!submissionsLoading && submissions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Past submissions</p>
+              <div className="space-y-1.5">
+                {submissions.map(sub => {
+                  const date = new Date(sub.created_at);
+                  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <button
+                      key={sub.id}
+                      onClick={() => onViewSubmission(sub.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50/50 transition-colors text-left"
+                    >
+                      <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-gray-700">{dateStr} {timeStr}</span>
+                          {sub.score_estimate && (
+                            <span className="text-xs font-semibold text-primary-600">{sub.score_estimate}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate">
+                          {sub.num_correct}/{sub.num_questions} correct
+                          {sub.topic_name ? ` · ${sub.topic_name}` : ''}
+                        </p>
+                      </div>
+                      <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </button>
-          <button
-            onClick={() => onSetMode('practice')}
-            className="flex flex-col items-center gap-3 p-5 rounded-xl border-2 border-gray-200 hover:border-primary-300 hover:bg-primary-50/50 transition-colors text-center group"
-          >
-            <div className="h-10 w-10 rounded-xl bg-green-100 flex items-center justify-center group-hover:bg-green-200 transition-colors">
-              <FileText className="h-5 w-5 text-green-600" />
+          )}
+          {!submissionsLoading && submissions.length === 0 && (
+            <div className="text-center py-6">
+              <BookMarked className="h-6 w-6 text-gray-200 mx-auto mb-2" />
+              <p className="text-xs text-gray-400">No homework submitted yet</p>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-700">Practice problems</p>
-              <p className="text-xs text-gray-400 mt-1">AI-generated homework questions</p>
-            </div>
-          </button>
+          )}
         </div>
       </div>
     );
@@ -877,9 +930,50 @@ function HomeworkTab({
         </div>
 
         <div className="px-4 py-4 space-y-4">
+          {/* Past submissions */}
+          {!feedback && !feedbackLoading && submissions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-500">Past submissions</p>
+              <div className="space-y-1.5">
+                {submissions.map(sub => {
+                  const date = new Date(sub.created_at);
+                  const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  const timeStr = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <button
+                      key={sub.id}
+                      onClick={() => onViewSubmission(sub.id)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-200 hover:border-primary-300 hover:bg-primary-50/50 transition-colors text-left"
+                    >
+                      <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-gray-700">{dateStr} {timeStr}</span>
+                          {sub.score_estimate && (
+                            <span className="text-xs font-semibold text-primary-600">{sub.score_estimate}</span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate">
+                          {sub.num_correct}/{sub.num_questions} correct
+                          {sub.topic_name ? ` · ${sub.topic_name}` : ''}
+                        </p>
+                      </div>
+                      <ChevronRight className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Upload area */}
           {!feedback && !feedbackLoading && (
             <>
+              {submissions.length > 0 && (
+                <p className="text-xs font-semibold text-gray-500">Upload new work</p>
+              )}
               <div
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -932,7 +1026,7 @@ function HomeworkTab({
                   </div>
                   <button
                     onClick={() => {
-                      onUploadFeedback(courseId, uploadFiles, topicName, chapterName);
+                      onUploadFeedback(courseId, uploadFiles, { topicName, chapterName, sessionId, topicId, chapterId });
                       setUploadFiles([]);
                     }}
                     className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 transition-colors"
@@ -962,6 +1056,15 @@ function HomeworkTab({
                   <span key={i} className="h-1.5 w-1.5 rounded-full bg-blue-400" style={{ animation: 'pulse 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }} />
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Error state */}
+          {feedbackError && !feedbackLoading && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center space-y-2">
+              <XCircle className="h-5 w-5 text-red-400 mx-auto" />
+              <p className="text-sm text-red-700 font-medium">Failed to analyse homework</p>
+              <p className="text-xs text-red-500">{feedbackError}</p>
             </div>
           )}
 
@@ -1318,11 +1421,13 @@ export default function SessionPage() {
     homeworkMode, setHomeworkMode,
     homeworkProblems, homeworkProblemsLoading, homeworkProblemsGenerating, homeworkProblemsError,
     homeworkAnswers, homeworkMarkingId, homeworkHints, homeworkHintLoading,
-    homeworkDifficulty, homeworkFeedback, homeworkFeedbackLoading,
+    homeworkDifficulty, homeworkFeedback, homeworkFeedbackLoading, homeworkFeedbackError,
+    homeworkSubmissions, homeworkSubmissionsLoading,
     loadHomeworkProblems, loadMoreHomeworkProblems, refreshHomeworkProblems,
     setHomeworkAnswerText, submitHomeworkAnswer,
     fetchHomeworkHint, clearHomeworkHint, setHomeworkDifficulty,
-    uploadHomeworkForFeedback, clearHomework,
+    uploadHomeworkForFeedback, fetchHomeworkSubmissions, viewHomeworkSubmission,
+    clearHomework,
     persistHomeworkState, restoreHomeworkState, clearHomeworkSession,
   } = useExamStore();
 
@@ -1654,7 +1759,13 @@ export default function SessionPage() {
               <BookOpen className="h-3.5 w-3.5" /> Study
             </button>
             <button
-              onClick={() => setCenterTab('homework')}
+              onClick={() => {
+                setCenterTab('homework');
+                // Pre-fetch submissions when switching to homework tab
+                if (activeSession?.course_id) {
+                  fetchHomeworkSubmissions(activeSession.course_id, activeSession?.topic_id, activeSession?.chapter_id);
+                }
+              }}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${centerTab === 'homework' ? 'border-primary-500 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
             >
               <BookMarked className="h-3.5 w-3.5" /> Homework
@@ -1749,10 +1860,19 @@ export default function SessionPage() {
               difficulty={homeworkDifficulty}
               feedback={homeworkFeedback}
               feedbackLoading={homeworkFeedbackLoading}
+              feedbackError={homeworkFeedbackError}
               courseId={activeSession?.course_id ?? ''}
               topicName={activeSession?.title}
               chapterName={undefined}
-              onSetMode={setHomeworkMode}
+              sessionId={activeSession?.id}
+              submissions={homeworkSubmissions}
+              submissionsLoading={homeworkSubmissionsLoading}
+              onSetMode={(m) => {
+                setHomeworkMode(m);
+                if (m === 'feedback' && activeSession?.course_id) {
+                  fetchHomeworkSubmissions(activeSession.course_id, activeSession?.topic_id, activeSession?.chapter_id);
+                }
+              }}
               onLoadProblems={loadHomeworkProblems}
               onLoadMore={loadMoreHomeworkProblems}
               onRefresh={refreshHomeworkProblems}
@@ -1762,6 +1882,7 @@ export default function SessionPage() {
               onClearHint={clearHomeworkHint}
               onSetDifficulty={setHomeworkDifficulty}
               onUploadFeedback={uploadHomeworkForFeedback}
+              onViewSubmission={viewHomeworkSubmission}
               onClear={clearHomework}
               subjectId={activeSession?.subject_id}
               topicId={activeSession?.topic_id}

@@ -67,6 +67,18 @@ export interface HomeworkFeedback {
   next_steps: string;
 }
 
+export interface HomeworkSubmissionSummary {
+  id: string;
+  course_id: string;
+  topic_name?: string;
+  chapter_name?: string;
+  score_estimate?: string;
+  num_questions: number;
+  num_correct: number;
+  file_names?: string[];
+  created_at: string;
+}
+
 interface ExamState {
   // Format management
   formats: ExamFormat[];
@@ -193,6 +205,9 @@ interface ExamState {
   homeworkDifficulty: number;
   homeworkFeedback: HomeworkFeedback | null;
   homeworkFeedbackLoading: boolean;
+  homeworkFeedbackError: string | null;
+  homeworkSubmissions: HomeworkSubmissionSummary[];
+  homeworkSubmissionsLoading: boolean;
 
   // Homework actions
   setHomeworkMode: (mode: 'choose' | 'feedback' | 'practice') => void;
@@ -204,7 +219,9 @@ interface ExamState {
   fetchHomeworkHint: (problemId: string, answerText?: string) => Promise<void>;
   clearHomeworkHint: (problemId: string) => void;
   setHomeworkDifficulty: (d: number) => void;
-  uploadHomeworkForFeedback: (courseId: string, files: File[], topicName?: string, chapterName?: string) => Promise<void>;
+  uploadHomeworkForFeedback: (courseId: string, files: File[], opts?: { topicName?: string; chapterName?: string; sessionId?: string; topicId?: string; chapterId?: string }) => Promise<void>;
+  fetchHomeworkSubmissions: (courseId: string, topicId?: string, chapterId?: string) => Promise<void>;
+  viewHomeworkSubmission: (submissionId: string) => Promise<void>;
   clearHomework: () => void;
   persistHomeworkState: (sessionId: string) => void;
   restoreHomeworkState: (sessionId: string) => boolean;
@@ -272,6 +289,9 @@ export const useExamStore = create<ExamState>((set, get) => ({
   homeworkDifficulty: 3,
   homeworkFeedback: null,
   homeworkFeedbackLoading: false,
+  homeworkFeedbackError: null,
+  homeworkSubmissions: [],
+  homeworkSubmissionsLoading: false,
 
   fetchFormats: async (courseId) => {
     set({ formatsLoading: true });
@@ -1020,19 +1040,75 @@ export const useExamStore = create<ExamState>((set, get) => ({
 
   setHomeworkDifficulty: (d) => set({ homeworkDifficulty: d }),
 
-  uploadHomeworkForFeedback: async (courseId, files, topicName, chapterName) => {
-    set({ homeworkFeedbackLoading: true, homeworkFeedback: null });
+  uploadHomeworkForFeedback: async (courseId, files, opts) => {
+    set({ homeworkFeedbackLoading: true, homeworkFeedback: null, homeworkFeedbackError: null });
     try {
       const form = new FormData();
       form.append('courseId', courseId);
-      if (topicName) form.append('topicName', topicName);
-      if (chapterName) form.append('chapterName', chapterName);
+      if (opts?.topicName) form.append('topicName', opts.topicName);
+      if (opts?.chapterName) form.append('chapterName', opts.chapterName);
+      if (opts?.sessionId) form.append('sessionId', opts.sessionId);
+      if (opts?.topicId) form.append('topicId', opts.topicId);
+      if (opts?.chapterId) form.append('chapterId', opts.chapterId);
       files.forEach(f => form.append('files', f));
 
-      const { data } = await api.post<HomeworkFeedback>('/api/homework/feedback', form, {
+      const { data } = await api.post<HomeworkFeedback & { submissionId?: string }>('/api/homework/feedback', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      set({ homeworkFeedback: data });
+      const { submissionId, ...feedback } = data;
+      set({ homeworkFeedback: feedback });
+
+      // Prepend new submission to the list if we got an ID back
+      if (submissionId) {
+        const numCorrect = feedback.questions?.filter(q => q.is_correct).length ?? 0;
+        set(state => ({
+          homeworkSubmissions: [
+            {
+              id: submissionId,
+              course_id: courseId,
+              topic_name: opts?.topicName,
+              chapter_name: opts?.chapterName,
+              score_estimate: feedback.score_estimate,
+              num_questions: feedback.questions?.length ?? 0,
+              num_correct: numCorrect,
+              file_names: files.map(f => f.name),
+              created_at: new Date().toISOString(),
+            },
+            ...state.homeworkSubmissions,
+          ],
+        }));
+      }
+    } catch (err) {
+      console.error('[homework-upload] Error:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to analyse homework';
+      set({ homeworkFeedbackError: msg });
+    } finally {
+      set({ homeworkFeedbackLoading: false });
+    }
+  },
+
+  fetchHomeworkSubmissions: async (courseId, topicId, chapterId) => {
+    set({ homeworkSubmissionsLoading: true });
+    try {
+      const params = new URLSearchParams({ courseId });
+      if (topicId) params.set('topicId', topicId);
+      if (chapterId) params.set('chapterId', chapterId);
+      const { data } = await api.get<{ submissions: HomeworkSubmissionSummary[] }>(`/api/homework/submissions?${params}`);
+      set({ homeworkSubmissions: data.submissions ?? [] });
+    } catch (err) {
+      console.error('[fetchHomeworkSubmissions] Error:', err);
+    } finally {
+      set({ homeworkSubmissionsLoading: false });
+    }
+  },
+
+  viewHomeworkSubmission: async (submissionId) => {
+    set({ homeworkFeedbackLoading: true, homeworkFeedback: null, homeworkMode: 'feedback' });
+    try {
+      const { data } = await api.get<{ feedback: HomeworkFeedback }>(`/api/homework/submissions/${submissionId}`);
+      set({ homeworkFeedback: data.feedback });
+    } catch {
+      set({ homeworkFeedback: null });
     } finally {
       set({ homeworkFeedbackLoading: false });
     }
@@ -1050,6 +1126,8 @@ export const useExamStore = create<ExamState>((set, get) => ({
     homeworkProblemsError: null,
     homeworkFeedback: null,
     homeworkFeedbackLoading: false,
+    homeworkFeedbackError: null,
+    // Keep homeworkSubmissions — they persist across mode changes
   }),
 
   persistHomeworkState: (sessionId) => {
@@ -1120,6 +1198,7 @@ export const useExamStore = create<ExamState>((set, get) => ({
     homeworkProblemsLoading: false,
     homeworkProblemsGenerating: false,
     homeworkProblemsError: null,
+    homeworkFeedbackError: null,
     homeworkMode: 'choose',
   }),
 }));
