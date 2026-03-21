@@ -16,11 +16,23 @@ export interface HomeworkProblem {
   chapter_name?: string;
 }
 
+export interface HomeworkFeedbackQuestion {
+  question_number: string;
+  question_text: string;
+  student_answer: string;
+  is_correct: boolean;
+  score_estimate?: string;
+  strengths: string[];
+  improvements: string[];
+  correct_answer?: string;
+}
+
 export interface HomeworkFeedback {
   summary: string;
   score_estimate: string;
-  strengths: Array<{ area: string; detail: string }>;
-  areas_to_improve: Array<{ area: string; detail: string; suggestion: string }>;
+  questions: HomeworkFeedbackQuestion[];
+  overall_strengths: string[];
+  overall_improvements: string[];
   misconceptions: Array<{ concept: string; what_student_did: string; correction: string }>;
   topics_to_review: string[];
   next_steps: string;
@@ -151,7 +163,7 @@ export async function analyzeHomework(params: {
 
     raw = await chatCompletion(
       [{ role: 'user', content: contentParts }],
-      { temperature: 0.3, maxTokens: 3000 },
+      { temperature: 0.3, maxTokens: 8000 },
     );
   } else if (studentWork) {
     // Text-only (PDF extracted text)
@@ -163,7 +175,7 @@ export async function analyzeHomework(params: {
     });
     raw = await chatCompletion(
       [{ role: 'user', content: prompt }],
-      { temperature: 0.3, maxTokens: 3000 },
+      { temperature: 0.3, maxTokens: 8000 },
     );
   } else {
     throw new Error('No content to analyze');
@@ -175,8 +187,20 @@ export async function analyzeHomework(params: {
   return {
     summary: String(parsed.summary ?? ''),
     score_estimate: String(parsed.score_estimate ?? 'N/A'),
-    strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-    areas_to_improve: Array.isArray(parsed.areas_to_improve) ? parsed.areas_to_improve : [],
+    questions: Array.isArray(parsed.questions)
+      ? parsed.questions.map((q: Record<string, unknown>) => ({
+          question_number: String(q.question_number ?? ''),
+          question_text: String(q.question_text ?? ''),
+          student_answer: String(q.student_answer ?? ''),
+          is_correct: Boolean(q.is_correct),
+          score_estimate: typeof q.score_estimate === 'string' ? q.score_estimate : undefined,
+          strengths: Array.isArray(q.strengths) ? q.strengths.map(String) : [],
+          improvements: Array.isArray(q.improvements) ? q.improvements.map(String) : [],
+          correct_answer: typeof q.correct_answer === 'string' ? q.correct_answer : undefined,
+        }))
+      : [],
+    overall_strengths: Array.isArray(parsed.overall_strengths) ? parsed.overall_strengths.map(String) : [],
+    overall_improvements: Array.isArray(parsed.overall_improvements) ? parsed.overall_improvements.map(String) : [],
     misconceptions: Array.isArray(parsed.misconceptions) ? parsed.misconceptions : [],
     topics_to_review: Array.isArray(parsed.topics_to_review) ? parsed.topics_to_review : [],
     next_steps: String(parsed.next_steps ?? ''),

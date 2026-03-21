@@ -973,42 +973,130 @@ function HomeworkTab({
                 <p className="text-sm font-semibold text-blue-800 mb-1">Summary</p>
                 <p className="text-sm text-blue-700 leading-relaxed">{feedback.summary}</p>
                 {feedback.score_estimate && (
-                  <p className="text-xs text-blue-500 mt-2 font-medium">Estimated score: {feedback.score_estimate}</p>
+                  <p className="text-xs text-blue-500 mt-2 font-medium">Overall: {feedback.score_estimate}</p>
                 )}
               </div>
 
-              {/* Strengths */}
-              {feedback.strengths.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-green-800 mb-2 flex items-center gap-1.5">
-                    <CheckCircle2 className="h-4 w-4" /> Strengths
-                  </p>
-                  <div className="space-y-2">
-                    {feedback.strengths.map((s, i) => (
-                      <div key={i}>
-                        <p className="text-xs font-semibold text-green-700">{s.area}</p>
-                        <p className="text-xs text-green-600">{s.detail}</p>
+              {/* Per-question analysis */}
+              {feedback.questions.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">Question-by-question analysis</p>
+                  {feedback.questions.map((q, i) => (
+                    <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      {/* Question header */}
+                      <div className="px-4 pt-3 pb-2 border-b border-gray-100 flex items-center gap-2">
+                        <span className="text-xs text-gray-400 font-medium">Q{q.question_number || i + 1}</span>
+                        {q.score_estimate && (
+                          <span className="text-xs font-semibold text-gray-500">{q.score_estimate}</span>
+                        )}
+                        <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full ${
+                          q.is_correct
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {q.is_correct ? 'Correct' : 'Needs work'}
+                        </span>
                       </div>
-                    ))}
-                  </div>
+
+                      <div className="px-4 py-3 space-y-3">
+                        {/* Extracted question */}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 mb-1">Question</p>
+                          <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                            <ReactMarkdown
+                              className="prose prose-xs max-w-none text-sm text-gray-800"
+                              remarkPlugins={[remarkMath, remarkGfm]}
+                              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                            >{preprocessLatex(q.question_text)}</ReactMarkdown>
+                          </div>
+                        </div>
+
+                        {/* Student's answer */}
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 mb-1">Your answer</p>
+                          <div className={`rounded-lg p-3 border ${q.is_correct ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                            <ReactMarkdown
+                              className="prose prose-xs max-w-none text-sm text-gray-800"
+                              remarkPlugins={[remarkMath, remarkGfm]}
+                              rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                            >{preprocessLatex(q.student_answer)}</ReactMarkdown>
+                          </div>
+                        </div>
+
+                        {/* What you did well */}
+                        {q.strengths.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-green-700 mb-1 flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> What you did well
+                            </p>
+                            <ul className="space-y-1">
+                              {q.strengths.map((s, si) => (
+                                <li key={si} className="text-xs text-green-600 leading-relaxed pl-4 relative before:content-['•'] before:absolute before:left-1 before:text-green-400">{s}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* What to improve */}
+                        {q.improvements.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-amber-700 mb-1 flex items-center gap-1">
+                              <Lightbulb className="h-3 w-3" /> To improve
+                            </p>
+                            <ul className="space-y-1">
+                              {q.improvements.map((imp, ii) => (
+                                <li key={ii} className="text-xs text-amber-600 leading-relaxed pl-4 relative before:content-['•'] before:absolute before:left-1 before:text-amber-400">{imp}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Correct answer (only if wrong) */}
+                        {q.correct_answer && !q.is_correct && (
+                          <div>
+                            <p className="text-xs font-semibold text-emerald-700 mb-1 flex items-center gap-1">
+                              <BookMarked className="h-3 w-3" /> Correct answer
+                            </p>
+                            <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
+                              <ReactMarkdown
+                                className="prose prose-xs max-w-none text-xs text-emerald-900 leading-relaxed"
+                                remarkPlugins={[remarkMath, remarkGfm]}
+                                rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false }]]}
+                              >{preprocessLatex(q.correct_answer)}</ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              {/* Areas to improve */}
-              {feedback.areas_to_improve.length > 0 && (
+              {/* Overall strengths */}
+              {feedback.overall_strengths.length > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                  <p className="text-sm font-semibold text-green-800 mb-2 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> Overall strengths
+                  </p>
+                  <ul className="space-y-1.5">
+                    {feedback.overall_strengths.map((s, i) => (
+                      <li key={i} className="text-xs text-green-600 leading-relaxed pl-4 relative before:content-['•'] before:absolute before:left-1 before:text-green-400">{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Overall improvements */}
+              {feedback.overall_improvements.length > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                   <p className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
-                    <Lightbulb className="h-4 w-4" /> Areas to improve
+                    <Lightbulb className="h-4 w-4" /> Overall areas to improve
                   </p>
-                  <div className="space-y-2">
-                    {feedback.areas_to_improve.map((a, i) => (
-                      <div key={i}>
-                        <p className="text-xs font-semibold text-amber-700">{a.area}</p>
-                        <p className="text-xs text-amber-600">{a.detail}</p>
-                        <p className="text-xs text-amber-500 italic mt-0.5">{a.suggestion}</p>
-                      </div>
+                  <ul className="space-y-1.5">
+                    {feedback.overall_improvements.map((a, i) => (
+                      <li key={i} className="text-xs text-amber-600 leading-relaxed pl-4 relative before:content-['•'] before:absolute before:left-1 before:text-amber-400">{a}</li>
                     ))}
-                  </div>
+                  </ul>
                 </div>
               )}
 

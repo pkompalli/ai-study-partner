@@ -45,11 +45,23 @@ export interface HomeworkProblem {
   chapter_name?: string;
 }
 
+export interface HomeworkFeedbackQuestion {
+  question_number: string;
+  question_text: string;
+  student_answer: string;
+  is_correct: boolean;
+  score_estimate?: string;
+  strengths: string[];
+  improvements: string[];
+  correct_answer?: string;
+}
+
 export interface HomeworkFeedback {
   summary: string;
   score_estimate: string;
-  strengths: Array<{ area: string; detail: string }>;
-  areas_to_improve: Array<{ area: string; detail: string; suggestion: string }>;
+  questions: HomeworkFeedbackQuestion[];
+  overall_strengths: string[];
+  overall_improvements: string[];
   misconceptions: Array<{ concept: string; what_student_did: string; correction: string }>;
   topics_to_review: string[];
   next_steps: string;

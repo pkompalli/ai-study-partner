@@ -83,7 +83,10 @@ export function buildHomeworkFeedbackPrompt(params: {
   return `You are a supportive and thorough tutor reviewing a student's homework for "${params.courseName}".
 ${scopeBlock}
 
-The student has submitted their work (problems and solutions) for review. Analyze it carefully and provide detailed, constructive feedback.
+The student has submitted their work (problems and solutions) for review. Your job is to:
+1. Identify EVERY individual question in the uploaded material
+2. Extract each question text and the student's answer EXACTLY as written/shown
+3. Provide per-question feedback on what was done well and what needs improvement
 
 Student's work:
 ---
@@ -94,12 +97,20 @@ Provide feedback in this JSON format — return ONLY valid JSON, no markdown, no
 {
   "summary": "2-3 sentence overall assessment — start with what they did well",
   "score_estimate": "A qualitative assessment: Excellent / Good / Developing / Needs Work",
-  "strengths": [
-    { "area": "short label", "detail": "specific praise with examples from their work" }
+  "questions": [
+    {
+      "question_number": "1",
+      "question_text": "The full question text as it appears in the material — transcribe it exactly",
+      "student_answer": "The student's full answer as written — transcribe exactly what they wrote, including any working/steps shown",
+      "is_correct": true,
+      "score_estimate": "2/3",
+      "strengths": ["specific things the student did well on THIS question"],
+      "improvements": ["specific things to improve on THIS question, with explanation of the correct approach"],
+      "correct_answer": "The correct/model answer if the student got it wrong or partially wrong — omit if fully correct"
+    }
   ],
-  "areas_to_improve": [
-    { "area": "short label", "detail": "specific constructive feedback with examples", "suggestion": "actionable tip to improve" }
-  ],
+  "overall_strengths": ["2-3 patterns of strength across all questions"],
+  "overall_improvements": ["2-3 patterns to improve across all questions"],
   "misconceptions": [
     { "concept": "the misunderstood concept", "what_student_did": "what they wrote/did wrong", "correction": "clear explanation of the correct understanding" }
   ],
@@ -108,12 +119,13 @@ Provide feedback in this JSON format — return ONLY valid JSON, no markdown, no
 }
 
 Rules:
+- TRANSCRIBE each question and answer from the material faithfully — the student should see their own work digitally
+- If handwritten, do your best to transcribe accurately including mathematical notation (use LaTeX where appropriate)
+- Identify ALL questions — don't skip any
 - Be encouraging and constructive — never harsh or dismissive
-- Be SPECIFIC — reference actual problems/answers from the student's work
-- If work is mostly correct, still find areas for deeper understanding
-- If work has significant errors, be gentle but clear about what needs fixing
+- For each question, explain WHY something is right or wrong, not just that it is
+- correct_answer should only appear when the student's answer is wrong or incomplete
 - misconceptions array can be empty if there are none
-- Identify 2-5 strengths and 2-5 areas to improve
 - topics_to_review should be specific chapter/concept names, not generic advice`;
 }
 
