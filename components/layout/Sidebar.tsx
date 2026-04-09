@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, LogOut, BookOpen, ChevronDown, ChevronRight, GraduationCap, Settings, LayoutDashboard } from 'lucide-react';
+import { Plus, LogOut, BookOpen, ChevronDown, ChevronRight, GraduationCap, Settings, LayoutDashboard, Zap } from 'lucide-react';
 import Image from 'next/image';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
@@ -68,6 +68,14 @@ export function Sidebar() {
           >
             <LayoutDashboard className="h-3.5 w-3.5 text-primary-400" />
             <span className="text-xs font-medium text-primary-200">Dashboard</span>
+          </Link>
+          <Link
+            href="/for-you"
+            onClick={closeMobile}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-primary-900 hover:text-white transition-colors"
+          >
+            <Zap className="h-3.5 w-3.5 text-amber-400" />
+            <span className="text-xs font-medium text-primary-200">For you now</span>
           </Link>
           <Link
             href="/settings"

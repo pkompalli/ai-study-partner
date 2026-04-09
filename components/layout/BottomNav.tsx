@@ -1,11 +1,12 @@
 'use client'
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Plus } from 'lucide-react';
+import { LayoutDashboard, Plus, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const items = [
   { to: '/dashboard', icon: <LayoutDashboard className="h-5 w-5" />, label: 'Dashboard' },
+  { to: '/for-you', icon: <Zap className="h-5 w-5" />, label: 'For you' },
   { to: '/onboarding', icon: <Plus className="h-5 w-5" />, label: 'New Course' },
 ];
 
