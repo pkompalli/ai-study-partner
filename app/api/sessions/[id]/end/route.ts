@@ -10,6 +10,7 @@ import { upsertChapterProgress } from '@/lib/db/topicBank'
 import { getCourseContext } from '@/lib/db/courses'
 import { createArtifact } from '@/lib/db/artifacts'
 import { compileArtifact } from '@/lib/llm/artifactCompiler'
+import { markStudyPlanCompleted } from '@/lib/db/studyPlanItems'
 
 // PATCH /api/sessions/[id]/end — end the session and compile a lesson artifact
 export async function PATCH(
@@ -80,6 +81,11 @@ export async function PATCH(
         session.course_id,
         'completed',
       )
+    }
+
+    // Mark matching study plan item as completed (today + same topic)
+    if (session.topic_id) {
+      markStudyPlanCompleted(user.id, session.topic_id).catch(() => {})
     }
 
     return NextResponse.json({ artifactId: artifact.id })

@@ -155,6 +155,7 @@ export async function DELETE(
     return new NextResponse(null, { status: 204 })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal error'
+    console.error('[courses] DELETE error:', message, err)
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

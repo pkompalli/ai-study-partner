@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Compass, BookOpen, Lightbulb, Brain, ChevronLeft, ChevronRight, Bookmark, Check, GraduationCap, CheckCircle2, XCircle, Settings, Minus, Plus, Paperclip, BookMarked, Upload, FileText, ArrowRight, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Compass, BookOpen, Lightbulb, Brain, ChevronLeft, ChevronRight, Bookmark, Check, GraduationCap, CheckCircle2, XCircle, Settings, Minus, Plus, Paperclip, BookMarked, Upload, FileText, ArrowRight, RotateCcw, Pause, Play, Square } from 'lucide-react';
 import { useSessionStore } from '@/store/sessionStore';
 import { useCourseStore } from '@/store/courseStore';
 import { useUIStore } from '@/store/uiStore';
@@ -1389,6 +1389,97 @@ function HomeworkTab({
   );
 }
 
+// ─── Study Timer ─────────────────────────────────────────────────────────────
+
+function formatTimer(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+const TIMER_STORAGE_KEY = 'study_timer_'
+
+interface TimerState {
+  elapsed: number      // seconds of actual study time (excludes paused time)
+  paused: boolean
+  pausedAt: number | null  // timestamp when paused
+  startedAt: number    // timestamp when timer started (for reference)
+}
+
+function useStudyTimer(sessionId: string, isActive: boolean) {
+  const storageKey = TIMER_STORAGE_KEY + sessionId
+
+  const [state, setState] = useState<TimerState>(() => {
+    try {
+      const saved = localStorage.getItem(storageKey)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // Auto-resume when returning to an active session that was auto-paused
+        if (isActive && parsed.paused) {
+          return { ...parsed, paused: false, pausedAt: null }
+        }
+        return parsed
+      }
+    } catch { /* ignore */ }
+    return { elapsed: 0, paused: false, pausedAt: null, startedAt: Date.now() }
+  })
+
+  // Persist to localStorage on every state change
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(state)) } catch { /* ignore */ }
+  }, [state, storageKey])
+
+  // Tick every second when not paused and session is active
+  useEffect(() => {
+    if (state.paused || !isActive) return
+    const interval = setInterval(() => {
+      setState(prev => ({ ...prev, elapsed: prev.elapsed + 1 }))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [state.paused, isActive])
+
+  const pause = () => setState(prev => ({ ...prev, paused: true, pausedAt: Date.now() }))
+  const resume = () => setState(prev => ({ ...prev, paused: false, pausedAt: null }))
+  const stop = () => setState(prev => ({ ...prev, paused: true, pausedAt: prev.pausedAt ?? Date.now() }))
+
+  return { elapsed: state.elapsed, paused: state.paused, pause, resume, stop }
+}
+
+function StudyTimer({ sessionId, isActive, onEnd }: { sessionId: string; isActive: boolean; onEnd?: () => void }) {
+  const { elapsed, paused, pause, resume } = useStudyTimer(sessionId, isActive)
+
+  if (!isActive && elapsed === 0) return null
+
+  return (
+    <div className="flex items-center gap-1.5 flex-shrink-0">
+      <span className={`text-sm font-mono font-semibold tabular-nums ${paused ? 'text-gray-400' : 'text-primary-600'}`}>
+        {formatTimer(elapsed)}
+      </span>
+      {isActive && (
+        <>
+          {paused ? (
+            <button onClick={resume} className="p-1 rounded-lg hover:bg-primary-50 transition-colors" title="Resume timer">
+              <Play className="h-3.5 w-3.5 text-primary-500" />
+            </button>
+          ) : (
+            <button onClick={pause} className="p-1 rounded-lg hover:bg-gray-100 transition-colors" title="Pause timer">
+              <Pause className="h-3.5 w-3.5 text-gray-500" />
+            </button>
+          )}
+          <button onClick={onEnd ?? pause} className="p-1 rounded-lg hover:bg-red-50 transition-colors" title="End session">
+            <Square className="h-3 w-3 text-red-400" />
+          </button>
+        </>
+      )}
+      {!isActive && (
+        <span className="text-xs text-gray-400">done</span>
+      )}
+    </div>
+  )
+}
+
 // ─── Session Page ──────────────────────────────────────────────────────────────
 
 export default function SessionPage() {
@@ -1400,7 +1491,7 @@ export default function SessionPage() {
     activeFlashcards,
     topicSummary, summaryStreaming, summaryStreamingContent, summaryDepth,
     responsePills, pillsLoading,
-    loadSession, sendMessage,
+    loadSession, sendMessage, endSession,
     fetchSummary, regenerateMessage, reviewCard, saveCardFromQuestion,
   } = useSessionStore();
   const { fetchCourse } = useCourseStore();
@@ -1431,7 +1522,8 @@ export default function SessionPage() {
     persistHomeworkState, restoreHomeworkState, clearHomeworkSession,
   } = useExamStore();
 
-  const [sessionLoaded, setSessionLoaded] = useState(false);
+  // If the store already has this session (e.g. returning via Continue), start as loaded
+  const [sessionLoaded, setSessionLoaded] = useState(activeSession?.id === id);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const [centerTab, setCenterTab] = useState<'study' | 'homework' | 'exam'>('study');
 
@@ -1439,26 +1531,48 @@ export default function SessionPage() {
   const [rightOpen, setRightOpen] = useState(true);
 
   // MCQ history
+  // Restore MCQ state from sessionStorage when resuming the same session
+  const mcqStorageKey = `mcq_state_${id}`;
   const [mcqHistory, setMcqHistory] = useState<
     Array<{ sourceMessageId?: string | null; question: string; answerPills: string[]; correctIndex: number; explanation: string }>
-  >([]);
-  const [mcqHistoryIndex, setMcqHistoryIndex] = useState(0);
-  const [mcqSelections, setMcqSelections] = useState<Record<number, number>>({});
+  >(() => {
+    try { const s = sessionStorage.getItem(mcqStorageKey); return s ? JSON.parse(s).history ?? [] : []; } catch { return []; }
+  });
+  const [mcqHistoryIndex, setMcqHistoryIndex] = useState(() => {
+    try { const s = sessionStorage.getItem(mcqStorageKey); return s ? JSON.parse(s).index ?? 0 : 0; } catch { return 0; }
+  });
+  const [mcqSelections, setMcqSelections] = useState<Record<number, number>>(() => {
+    try { const s = sessionStorage.getItem(mcqStorageKey); return s ? JSON.parse(s).selections ?? {} : {}; } catch { return {}; }
+  });
   // Flashcard panel
   const [reviewMode, setReviewMode] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Persist MCQ state to sessionStorage on every change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(mcqStorageKey, JSON.stringify({
+        history: mcqHistory, index: mcqHistoryIndex, selections: mcqSelections,
+      }));
+    } catch { /* quota exceeded — ignore */ }
+  }, [mcqHistory, mcqHistoryIndex, mcqSelections, mcqStorageKey]);
 
   const resetMcqState = () => {
     setMcqHistory([]);
     setMcqHistoryIndex(0);
     setMcqSelections({});
     lastMcqFingerprintRef.current = '';
+    try { sessionStorage.removeItem(mcqStorageKey); } catch { /* ignore */ }
   };
 
-  // Reset MCQ state when switching sessions (topics)
+  // Reset MCQ state when switching to a DIFFERENT session (not on remount of same)
+  const prevMcqSessionRef = useRef<string>(id);
   useEffect(() => {
-    resetMcqState();
+    if (prevMcqSessionRef.current !== id) {
+      resetMcqState();
+      prevMcqSessionRef.current = id;
+    }
   }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Clear and restore exam state when switching sessions (topics)
@@ -1502,9 +1616,13 @@ export default function SessionPage() {
     if (!id) return;
     let cancelled = false;
 
-    // Start summary fetch in parallel with session load — both independently
-    // fetch the session from DB. fetchSummary resets topicSummary itself.
-    fetchSummary(id, 0);
+    // If resuming the same session and we already have the summary, skip the
+    // network round-trip entirely — the content is already in the store.
+    const resumingSame = activeSession?.id === id;
+    const alreadyHasSummary = resumingSame && topicSummary !== null;
+    if (!alreadyHasSummary) {
+      fetchSummary(id, 0);
+    }
 
     const sessionPromise = loadSession(id).then(() => {
       if (cancelled) return;
@@ -1562,6 +1680,19 @@ export default function SessionPage() {
       }
       clearSessionExam();
       clearHomeworkSession();
+      // Auto-pause the study timer when navigating away
+      try {
+        const timerKey = TIMER_STORAGE_KEY + id;
+        const raw = localStorage.getItem(timerKey);
+        if (raw) {
+          const timer = JSON.parse(raw);
+          if (!timer.paused) {
+            timer.paused = true;
+            timer.pausedAt = Date.now();
+            localStorage.setItem(timerKey, JSON.stringify(timer));
+          }
+        }
+      } catch { /* ignore */ }
     };
   }, [id, loadSession, fetchSummary, fetchCourse, fetchFormats, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1585,11 +1716,17 @@ export default function SessionPage() {
   const mcqFingerprint = mcqQuestions.map(q => q.question).join('\n');
   const lastMcqFingerprintRef = useRef<string>('');
 
-  // Scroll to bottom on new messages or streaming
+  // Scroll to bottom only when NEW messages arrive (not on initial load / resume).
+  // Track the previous message count so we only scroll when it actually grows.
+  const prevMsgCountRef = useRef(visibleMessages.length);
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    // Skip scroll on initial mount / resume — only scroll when count increases
+    if (visibleMessages.length > prevMsgCountRef.current || streamingContent) {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
     }
+    prevMsgCountRef.current = visibleMessages.length;
   }, [visibleMessages.length, streamingContent]);
 
   // Accumulate MCQ history — new questions → append batch, show first new question
@@ -1620,6 +1757,19 @@ export default function SessionPage() {
     ? responsePills.followupPills
     : (topicSummary?.starters ?? []);
   const showExplore = exploreItems.length > 0 && !summaryStreaming && activeSession?.status === 'active';
+
+  const [ending, setEnding] = useState(false);
+  const handleEndSession = useCallback(async () => {
+    if (ending) return;
+    setEnding(true);
+    try {
+      await endSession();
+      router.push('/for-you');
+    } catch {
+      addToast('Failed to end session', 'error');
+      setEnding(false);
+    }
+  }, [ending, endSession, router, addToast]);
 
   const handleSend = async (content: string) => {
     try {
@@ -1732,6 +1882,9 @@ export default function SessionPage() {
             </>
           )}
         </div>
+        {headerReady && (
+          <StudyTimer sessionId={id} isActive={activeSession?.status === 'active'} onEnd={handleEndSession} />
+        )}
         <button
           onClick={() => router.push('/settings')}
           className="p-1 rounded-lg hover:bg-gray-100"
@@ -1935,7 +2088,7 @@ export default function SessionPage() {
                   <>
                     <button
                       disabled={mcqHistoryIndex === 0}
-                      onClick={() => setMcqHistoryIndex(i => i - 1)}
+                      onClick={() => setMcqHistoryIndex((i: number) => i - 1)}
                       className="p-0.5 rounded hover:bg-orange-100 disabled:opacity-30 transition-opacity"
                     >
                       <ChevronLeft className="h-3.5 w-3.5 text-orange-500" />
@@ -1945,7 +2098,7 @@ export default function SessionPage() {
                     </span>
                     <button
                       disabled={mcqHistoryIndex === mcqHistory.length - 1}
-                      onClick={() => setMcqHistoryIndex(i => i + 1)}
+                      onClick={() => setMcqHistoryIndex((i: number) => i + 1)}
                       className="p-0.5 rounded hover:bg-orange-100 disabled:opacity-30 transition-opacity"
                     >
                       <ChevronRight className="h-3.5 w-3.5 text-orange-500" />

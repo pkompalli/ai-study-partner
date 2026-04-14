@@ -5,8 +5,8 @@ import { useCourseStore } from '@/store/courseStore'
 import { useForYouStore, type ExamDate, type StudyPlanItem } from '@/store/forYouStore'
 import type { Course, StudySession, TopicReadiness } from '@/types'
 import {
-  Zap, Calendar, Plus, X, ChevronRight,
-  Clock, CheckCircle, Trash2, Edit2, Check, BookOpen, Play,
+  Zap, Calendar, Plus, X, ChevronRight, Pause,
+  Clock, CheckCircle, XCircle, Trash2, Edit2, Check, BookOpen, Play,
 } from 'lucide-react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -384,7 +384,7 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
     courseId: string; subjectId: string; topicId: string
     scheduledDate: string; scheduledTime: string; durationMinutes: number
   }>) => void
-  onUpdateItem: (id: string, patch: { scheduledDate?: string; scheduledTime?: string; durationMinutes?: number }) => void
+  onUpdateItem: (id: string, patch: { scheduledDate?: string; scheduledTime?: string; durationMinutes?: number; status?: string }) => void
   onEndSession: (sessionId: string) => Promise<void>
 }) {
   const courseMap = new Map(courses.map(c => [c.id, c]))
@@ -424,12 +424,14 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
   let currentBlock = new Date(defaultStart)
   const merged = suggestions.map(s => {
     const saved = planByTopic.get(s.topicId)
+    const planStatus = saved?.status ?? 'suggested'
     if (saved && saved.source === 'user') {
       // User override — use persisted values
       const start = new Date(`${saved.scheduled_date}T${saved.scheduled_time}`)
       return {
         ...s,
         planId: saved.id,
+        planStatus,
         startTime: start,
         duration: saved.duration_minutes as Duration,
         dateStr: saved.scheduled_date,
@@ -446,6 +448,7 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
     return {
       ...s,
       planId: saved?.id,
+      planStatus,
       startTime: start,
       duration: dur as Duration,
       dateStr,
@@ -467,22 +470,39 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
 
   const todayLabel = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 
-  const handleUpdate = (planId: string | undefined, patch: { scheduledDate?: string; scheduledTime?: string; durationMinutes?: number }) => {
+  const handleUpdate = (planId: string | undefined, patch: { scheduledDate?: string; scheduledTime?: string; durationMinutes?: number; status?: string }) => {
     if (planId) onUpdateItem(planId, patch)
   }
 
   // Find the "now" activity: an active session, or the current/next scheduled suggestion
   const activeSession = todaySessions.find(s => s.status === 'active')
   const nowMs = now.getTime()
-  const currentSuggestion = !activeSession ? merged.find(s => {
+  const pendingMerged = merged.filter(s => s.planStatus !== 'completed' && s.planStatus !== 'skipped')
+  const currentSuggestion = !activeSession ? pendingMerged.find(s => {
     if (s.dateStr !== todayStr) return false
     const startMs = s.startTime.getTime()
     const endMs = startMs + s.duration * 60000
     return nowMs >= startMs && nowMs < endMs
   }) : null
-  const nextSuggestion = !activeSession && !currentSuggestion ? merged.find(s => {
+  const nextSuggestion = !activeSession && !currentSuggestion ? pendingMerged.find(s => {
     return s.dateStr === todayStr && s.startTime.getTime() > nowMs
   }) : null
+  // Read active session's timer for the Now banner
+  let activeTimerPaused = false
+  let activeTimerDisplay: string | null = null
+  if (activeSession) {
+    try {
+      const td = localStorage.getItem('study_timer_' + activeSession.id)
+      if (td) {
+        const p = JSON.parse(td)
+        activeTimerPaused = p.paused ?? false
+        const e = p.elapsed ?? 0
+        if (e > 0) activeTimerDisplay = e >= 3600
+          ? `${Math.floor(e / 3600)}:${Math.floor((e % 3600) / 60).toString().padStart(2, '0')}:${(e % 60).toString().padStart(2, '0')}`
+          : `${Math.floor(e / 60)}:${(e % 60).toString().padStart(2, '0')}`
+      }
+    } catch { /* ignore */ }
+  }
   const nowItem = activeSession
     ? { label: topicNameMap.get(activeSession.topic_id ?? '') ?? activeSession.title ?? 'Study session', type: 'active' as const }
     : currentSuggestion
@@ -523,45 +543,77 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
     const tName = session.topic_id ? topicNameMap.get(session.topic_id) : null
     const chName = session.chapter_id ? chapterNameMap.get(session.chapter_id) : null
     const label = chName ?? tName ?? session.title ?? 'Study session'
-    const dur = durationMinutes(session.started_at, session.ended_at)
+    // Read timer data for elapsed time and paused state
+    let dur = durationMinutes(session.started_at, session.ended_at)
+    let timerElapsed = 0
+    let timerPaused = false
+    try {
+      const timerData = localStorage.getItem('study_timer_' + session.id)
+      if (timerData) {
+        const parsed = JSON.parse(timerData)
+        timerElapsed = parsed.elapsed ?? 0
+        timerPaused = parsed.paused ?? false
+        if (timerElapsed > 0) dur = Math.round(timerElapsed / 60)
+      }
+    } catch { /* ignore */ }
+    const timerDisplay = timerElapsed > 0
+      ? (timerElapsed >= 3600
+        ? `${Math.floor(timerElapsed / 3600)}:${Math.floor((timerElapsed % 3600) / 60).toString().padStart(2, '0')}:${(timerElapsed % 60).toString().padStart(2, '0')}`
+        : `${Math.floor(timerElapsed / 60)}:${(timerElapsed % 60).toString().padStart(2, '0')}`)
+      : null
 
     return (
       <div key={session.id}
         className={cn(
           'flex items-stretch gap-3 rounded-xl border transition-all group',
+          isActive && timerPaused ? 'border-amber-200 bg-amber-50/50' :
           isActive ? 'border-primary-200 bg-primary-50/50' : 'border-gray-100 hover:border-gray-200'
         )}>
         <div className={cn(
           'w-16 flex-shrink-0 flex flex-col items-center justify-center py-3 rounded-l-xl',
+          isActive && timerPaused ? 'bg-amber-100/50' :
           isActive ? 'bg-primary-100/50' : 'bg-gray-50'
         )}>
-          <span className="text-xs font-medium text-gray-500">{formatTime(session.started_at)}</span>
-          <span className="text-[10px] text-gray-400 mt-0.5">{dur}m</span>
+          <span className="text-xs font-medium text-gray-700">{formatTime(session.started_at)}</span>
         </div>
         <Link href={`/sessions/${session.id}`} className="flex-1 py-3 pr-3 min-w-0">
           <div className="flex items-center gap-2">
-            {isActive && <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />}
+            {isActive && timerPaused && <span className="h-2 w-2 rounded-full bg-amber-400 flex-shrink-0" />}
+            {isActive && !timerPaused && <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse flex-shrink-0" />}
             <p className={cn('text-sm font-medium truncate', isActive ? 'text-primary-700' : 'text-gray-800 group-hover:text-primary-700')}>
               {label}
             </p>
           </div>
-          <p className="text-xs text-gray-400 mt-0.5 truncate">{course?.name ?? 'Course'}</p>
+          <p className="text-xs mt-0.5 truncate">
+            <span className="text-gray-500">{course?.name ?? 'Course'}</span>
+            {isActive && timerPaused && <span className="text-amber-600 ml-2 font-medium">Paused</span>}
+          </p>
         </Link>
         <div className="flex items-center gap-2 pr-3 flex-shrink-0">
           {isActive ? (
-            <button
-              disabled={endingIds.has(session.id)}
-              onClick={async () => {
-                setEndingIds(prev => new Set(prev).add(session.id))
-                await onEndSession(session.id)
-                setEndingIds(prev => { const n = new Set(prev); n.delete(session.id); return n })
-              }}
-              className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-            >
-              {endingIds.has(session.id) ? 'Ending...' : 'End'}
-            </button>
+            <div className="flex items-center gap-2">
+              {timerDisplay && (
+                <span className={cn('text-xs font-mono font-semibold', timerPaused ? 'text-amber-600' : 'text-primary-600')}>
+                  {timerDisplay}
+                </span>
+              )}
+              <button
+                disabled={endingIds.has(session.id)}
+                onClick={async () => {
+                  setEndingIds(prev => new Set(prev).add(session.id))
+                  await onEndSession(session.id)
+                  setEndingIds(prev => { const n = new Set(prev); n.delete(session.id); return n })
+                }}
+                className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
+              >
+                {endingIds.has(session.id) ? 'Ending...' : 'End'}
+              </button>
+            </div>
           ) : (
-            <CheckCircle className="h-4 w-4 text-green-400" />
+            <div className="flex items-center gap-1.5">
+              {timerDisplay && <span className="text-xs text-green-600 font-mono font-semibold">{timerDisplay}</span>}
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            </div>
           )}
         </div>
       </div>
@@ -570,7 +622,7 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
 
   return (
     <div>
-      <p className="text-xs text-gray-400 mb-3">{todayLabel}</p>
+      <p className="text-xs text-gray-600 mb-3">{todayLabel}</p>
 
       {todaySessions.length === 0 && merged.length === 0 && (
         <div className="text-center py-6 border border-dashed border-gray-200 rounded-xl">
@@ -583,7 +635,7 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
       {/* ── Past: completed sessions + missed suggestion slots ── */}
       {hasPast && (
         <div className="mb-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Earlier today</p>
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Earlier today</p>
           <div className="space-y-1.5 opacity-60">
             {pastSessions.map(renderSessionCard)}
             {pastSuggestions.map(s => (
@@ -597,24 +649,33 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
       {nowItem && (
         <div className={cn(
           'flex items-center gap-3 px-4 py-3 rounded-xl mb-4 border',
+          nowItem.type === 'active' && activeTimerPaused ? 'bg-amber-50 border-amber-200' :
           nowItem.type === 'active' ? 'bg-primary-50 border-primary-200' :
           nowItem.type === 'now' ? 'bg-amber-50 border-amber-200' :
           'bg-gray-50 border-gray-200'
         )}>
           <div className={cn(
             'h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0',
+            nowItem.type === 'active' && activeTimerPaused ? 'bg-amber-100' :
             nowItem.type === 'active' ? 'bg-primary-100' :
             nowItem.type === 'now' ? 'bg-amber-100' : 'bg-gray-100'
           )}>
-            {nowItem.type === 'active' ? <Play className="h-4 w-4 text-primary-600" /> :
+            {nowItem.type === 'active' && activeTimerPaused ? <Pause className="h-4 w-4 text-amber-600" /> :
+             nowItem.type === 'active' ? <Play className="h-4 w-4 text-primary-600" /> :
              nowItem.type === 'now' ? <Zap className="h-4 w-4 text-amber-600" /> :
              <Clock className="h-4 w-4 text-gray-500" />}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-              {nowItem.type === 'active' ? 'In progress' : nowItem.type === 'now' ? 'Scheduled now' : `Up next · ${nowItem.time}`}
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-600">
+              {nowItem.type === 'active' && activeTimerPaused ? 'Paused' :
+               nowItem.type === 'active' ? 'In progress' :
+               nowItem.type === 'now' ? 'Scheduled now' : `Up next · ${nowItem.time}`}
+              {nowItem.type === 'active' && activeTimerDisplay && (
+                <span className={cn('ml-2 font-mono', activeTimerPaused ? 'text-amber-700' : 'text-primary-600')}>{activeTimerDisplay}</span>
+              )}
             </p>
             <p className={cn('text-sm font-semibold truncate',
+              nowItem.type === 'active' && activeTimerPaused ? 'text-amber-700' :
               nowItem.type === 'active' ? 'text-primary-700' :
               nowItem.type === 'now' ? 'text-amber-700' : 'text-gray-700'
             )}>
@@ -658,7 +719,7 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
       {/* ── Upcoming: future suggestion slots ── */}
       {hasUpcoming && (
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Upcoming</p>
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Upcoming</p>
           <div className="space-y-1.5">
             {upcomingSuggestions.map(s => (
               <SuggestionRow key={s.topicId} item={s} todayStr={todayStr} onUpdate={handleUpdate} />
@@ -672,11 +733,43 @@ function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onS
 
 /** Single suggestion row — extracted so each row gets its own date input ref */
 function SuggestionRow({ item: s, todayStr, onUpdate }: {
-  item: { topicId: string; topicName: string; subjectId: string; courseId: string; courseName: string; reason: string; planId?: string; duration: Duration; dateStr: string; timeStr: string }
+  item: { topicId: string; topicName: string; subjectId: string; courseId: string; courseName: string; reason: string; planId?: string; planStatus: string; duration: Duration; dateStr: string; timeStr: string }
   todayStr: string
-  onUpdate: (planId: string | undefined, patch: { scheduledDate?: string; scheduledTime?: string; durationMinutes?: number }) => void
+  onUpdate: (planId: string | undefined, patch: { scheduledDate?: string; scheduledTime?: string; durationMinutes?: number; status?: string }) => void
 }) {
   const dateRef = useRef<HTMLInputElement>(null)
+  const isCompleted = s.planStatus === 'completed'
+  const isSkipped = s.planStatus === 'skipped'
+  const isDone = isCompleted || isSkipped
+
+  if (isDone) {
+    return (
+      <div className={cn(
+        'flex items-stretch gap-0 rounded-xl border transition-all',
+        isCompleted ? 'border-green-200 bg-green-50/30' : 'border-gray-200 bg-gray-50/30'
+      )}>
+        <div className="w-20 flex-shrink-0 flex flex-col justify-center py-2.5 pl-3 pr-1 border-r border-gray-100 rounded-l-xl gap-0.5">
+          <span className={cn('text-xs font-semibold', isCompleted ? 'text-green-500' : 'text-gray-400')}>{s.timeStr}</span>
+          <span className={cn('text-[11px] font-medium', isCompleted ? 'text-green-400' : 'text-gray-400')}>{formatShortDate(s.dateStr)}</span>
+        </div>
+        <div className="flex items-center gap-3 p-3 flex-1 min-w-0">
+          {isCompleted ? (
+            <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+          ) : (
+            <XCircle className="h-4 w-4 text-gray-400 flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className={cn('text-sm truncate', isCompleted ? 'text-green-700' : 'text-gray-400 line-through')}>
+              {s.topicName}
+            </p>
+            <p className={cn('text-xs mt-0.5', isCompleted ? 'text-green-500' : 'text-gray-400')}>
+              {isCompleted ? 'Completed' : 'Skipped'} · {s.duration}m
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-stretch gap-0 rounded-xl border border-dashed border-gray-200 hover:border-primary-200 hover:bg-primary-50/30 transition-all group">
@@ -712,14 +805,14 @@ function SuggestionRow({ item: s, todayStr, onUpdate }: {
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-600 group-hover:text-primary-700 truncate">{s.topicName}</p>
           <div className="flex items-center gap-2 mt-0.5">
-            <p className="text-xs text-gray-400 truncate">{s.courseName}</p>
-            {s.reason && <span className="text-[10px] text-amber-500 font-medium whitespace-nowrap">{s.reason}</span>}
+            <p className="text-xs text-gray-500 truncate">{s.courseName}</p>
+            {s.reason && <span className="text-[10px] text-amber-600 font-medium whitespace-nowrap">{s.reason}</span>}
           </div>
         </div>
         <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-primary-400 flex-shrink-0" />
       </Link>
-      {/* Right — duration */}
-      <div className="flex items-center border-l border-gray-100 px-2">
+      {/* Right — duration + skip */}
+      <div className="flex items-center border-l border-gray-100 px-2 gap-1">
         <select
           value={s.duration}
           onChange={e => { e.stopPropagation(); onUpdate(s.planId, { durationMinutes: Number(e.target.value) }) }}
@@ -730,6 +823,15 @@ function SuggestionRow({ item: s, todayStr, onUpdate }: {
             <option key={d} value={d}>{d}m</option>
           ))}
         </select>
+        {s.planId && (
+          <button
+            onClick={e => { e.stopPropagation(); onUpdate(s.planId, { status: 'skipped' }) }}
+            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-gray-100 transition-opacity"
+            title="Skip this session"
+          >
+            <XCircle className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
+          </button>
+        )}
       </div>
     </div>
   )

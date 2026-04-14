@@ -113,3 +113,16 @@ export async function deleteStudyPlanItem(id: string, userId: string): Promise<v
     .eq('user_id', userId)
   if (error) throw error
 }
+
+/** Mark the study plan item for this topic on today's date as completed */
+export async function markStudyPlanCompleted(userId: string, topicId: string): Promise<void> {
+  const supabase = await createServiceClient()
+  const today = new Date().toISOString().slice(0, 10)
+  await supabase
+    .from('study_plan_items')
+    .update({ status: 'completed', updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('topic_id', topicId)
+    .eq('scheduled_date', today)
+    .in('status', ['suggested', 'scheduled'])
+}

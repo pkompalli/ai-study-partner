@@ -83,7 +83,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadSession: async (sessionId) => {
     const { data } = await api.get<StudySession & { messages: SessionMessage[] }>(`/api/sessions/${sessionId}`);
     const { messages, ...session } = data;
-    set({ activeSession: session, messages: messages ?? [], responsePills: null, activeFlashcards: null });
+    // If resuming the same session, preserve responsePills and flashcards to avoid flicker
+    const isSameSession = get().activeSession?.id === sessionId;
+    set({
+      activeSession: session,
+      messages: messages ?? [],
+      responsePills: isSameSession ? get().responsePills : null,
+      activeFlashcards: isSameSession ? get().activeFlashcards : null,
+    });
     // Load topic bank in the background — cards and questions appear immediately for returning students
     get().fetchTopicBank(sessionId).catch(() => {});
   },
@@ -241,7 +248,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (depth > 0) {
       set({ summaryDepth: depth });
     }
-    set({ summaryStreaming: true, summaryStreamingContent: '', topicSummary: null, responsePills: null });
+    // If we already have a topicSummary (continuing a session), keep it visible
+    // while we refresh from cache. Only blank it out if it's a new session or forced.
+    const existing = get().topicSummary;
+    const keepExisting = !!existing && !force && depth === 0;
+    set({
+      summaryStreaming: !keepExisting,
+      summaryStreamingContent: '',
+      topicSummary: keepExisting ? existing : null,
+      responsePills: keepExisting ? get().responsePills : null,
+    });
 
     try {
       const url = `${API_BASE}/api/sessions/${sessionId}/summary?depth=${depth}${force ? '&force=true' : ''}`;

@@ -55,7 +55,7 @@ interface ForYouState {
     source?: 'auto' | 'user'
   }>) => Promise<void>
   updateStudyPlanItem: (id: string, patch: {
-    scheduledDate?: string; scheduledTime?: string; durationMinutes?: number
+    scheduledDate?: string; scheduledTime?: string; durationMinutes?: number; status?: string
   }) => Promise<void>
   removeStudyPlanItem: (id: string) => Promise<void>
 }
@@ -164,6 +164,7 @@ export const useForYouStore = create<ForYouState>((set, get) => ({
         ...(patch.scheduledDate !== undefined ? { scheduled_date: patch.scheduledDate } : {}),
         ...(patch.scheduledTime !== undefined ? { scheduled_time: patch.scheduledTime } : {}),
         ...(patch.durationMinutes !== undefined ? { duration_minutes: patch.durationMinutes } : {}),
+        ...(patch.status !== undefined ? { status: patch.status as StudyPlanItem['status'] } : {}),
         source: 'user' as const,
       } : i)
     }))
