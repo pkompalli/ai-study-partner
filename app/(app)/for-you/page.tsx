@@ -373,7 +373,30 @@ function computeSuggestions(
     }
   }
 
-  return scored.sort((a, b) => b.score - a.score).slice(0, 5)
+  // Guarantee at least 1 topic per course, then fill remaining slots by score
+  scored.sort((a, b) => b.score - a.score)
+  const maxItems = Math.max(5, courses.length * 2)
+  const result: ScoredSuggestion[] = []
+  const usedIds = new Set<string>()
+
+  // First pass: pick the top-scored topic from each course
+  const seenCourses = new Set<string>()
+  for (const s of scored) {
+    if (seenCourses.has(s.courseId)) continue
+    seenCourses.add(s.courseId)
+    result.push(s)
+    usedIds.add(s.topicId)
+  }
+
+  // Second pass: fill remaining slots by global score
+  for (const s of scored) {
+    if (result.length >= maxItems) break
+    if (usedIds.has(s.topicId)) continue
+    result.push(s)
+    usedIds.add(s.topicId)
+  }
+
+  return result.sort((a, b) => b.score - a.score)
 }
 
 function TodayTimeline({ sessions, courses, examDates, readiness, studyPlan, onSavePlan, onUpdateItem, onEndSession }: {
