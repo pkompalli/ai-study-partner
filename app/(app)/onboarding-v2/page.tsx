@@ -22,7 +22,7 @@ export default function OnboardingV2Page() {
 
   // Redirect to dashboard when complete
   useEffect(() => {
-    if (currentLayer >= 8 && collectedData.courseId) {
+    if (currentLayer >= 7 && collectedData.courseId) {
       const timer = setTimeout(() => {
         router.push('/dashboard')
       }, 2000)

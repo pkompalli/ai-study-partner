@@ -30,14 +30,9 @@ export interface CollectedData {
   university?: string
   examName?: string  // for competitive exams
   learningTopic?: string  // for self-paced
-
-  // Layer 3: Timing
-  semesterTiming?: 'just_starting' | 'mid_semester' | 'final_stretch' | 'between_semesters' | string
-  examTimeline?: string  // for competitive exams
-  deadline?: string  // for self-paced
   yearOfStudy?: string
 
-  // Layer 4: Resources / course structure
+  // Layer 3: Resources / course structure
   sourceType?: 'text' | 'pdf' | 'image' | 'web_search' | 'manual' | string
   structureAdjustment?: string  // user's feedback for structure regeneration
   structure_confirm?: boolean  // whether structure was confirmed
@@ -54,9 +49,9 @@ export interface CollectedData {
     }>
   }
 
-  // Layer 4b: Exam format source decision
+  // Layer 3b: Exam format source decision
   examFormatSource?: string  // "Figure out the format for me" | "I'll upload a sample paper" | "Skip for now"
-  // Layer 4b: Exam format (discovered after structure)
+  // Layer 3b: Exam format (discovered after structure)
   inferredExamFormat?: {
     name: string
     description?: string
@@ -74,7 +69,7 @@ export interface CollectedData {
     }>
   }
 
-  // Layer 5: Exam dates
+  // Layer 4: Exam dates
   examDates?: Array<{
     label: string
     date: string
@@ -82,16 +77,16 @@ export interface CollectedData {
     chapterIds?: string[]
   }>
 
-  // Layer 6: Study rhythm
+  // Layer 5: Study rhythm
   sessionsPerWeek?: number
   minutesPerSession?: number | string  // e.g. 60 or "1 hour"
   preferredTimes?: string[]  // e.g. ['Morning', 'Evening']
   preferredDays?: string[]
 
-  // Layer 7: Plan
+  // Layer 6: Plan
   goal?: 'exam_prep' | 'classwork'
 
-  // Layer 8: Course created
+  // Layer 7: Course created
   courseId?: string
 }
 

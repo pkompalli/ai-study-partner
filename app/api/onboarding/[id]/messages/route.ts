@@ -142,8 +142,8 @@ export async function POST(
     const ack = getAcknowledgment(currentLayer, nextLayer, body.content, collectedData)
     const checkpoint = getDefaultCheckpointForLayer(nextLayer, collectedData)
 
-    // Handle finalize (layer 7 → 8)
-    if (nextLayer >= 7 && currentLayer < 7 || currentLayer === 7) {
+    // Handle finalize (layer 6 → 7)
+    if (nextLayer >= 6 && currentLayer < 6 || currentLayer === 6) {
       return handleFinalize(id, user.id, collectedData, nextLayer, history)
     }
 
@@ -253,33 +253,28 @@ function getAcknowledgment(
 
   // Layer 2 → 3: name provided
   if (currentLayer === 2 && nextLayer >= 3) {
-    return ''
+    return "Let's set up your course materials."
   }
 
-  // Layer 3 → 4: timing answered
-  if (currentLayer === 3 && nextLayer >= 4) {
-    return "Got it. Let's set up your course materials."
-  }
-
-  // Layer 4: structure confirmed, now asking about exam format
-  if (currentLayer === 4 && data.structure && data.structure_confirm !== false && !data.examFormatSource) {
+  // Layer 3: structure confirmed, now asking about exam format
+  if (currentLayer === 3 && data.structure && data.structure_confirm !== false && !data.examFormatSource) {
     return 'Course structure is ready. Want me to figure out the exam format too?'
   }
 
-  // Layer 4 → 5: exam format decision made (skip/confirmed)
-  if (currentLayer === 4 && nextLayer >= 5) {
+  // Layer 3 → 4: exam format decision made (skip/confirmed)
+  if (currentLayer === 3 && nextLayer >= 4) {
     const efs = String(data.examFormatSource ?? '').toLowerCase()
     if (efs.includes('skip')) return 'No problem, you can add that later.'
     return ''
   }
 
-  // Layer 5 → 6: exam dates
-  if (currentLayer === 5 && nextLayer >= 6) {
+  // Layer 4 → 5: exam dates
+  if (currentLayer === 4 && nextLayer >= 5) {
     return 'Got it. A few quick questions about your study schedule.'
   }
 
-  // Layer 6: sub-steps within study rhythm
-  if (currentLayer === 6 && nextLayer === 6) {
+  // Layer 5: sub-steps within study rhythm
+  if (currentLayer === 5 && nextLayer === 5) {
     if (data.sessionsPerWeek && !data.minutesPerSession) {
       return `${data.sessionsPerWeek} days a week — noted.`
     }
@@ -288,8 +283,8 @@ function getAcknowledgment(
     }
   }
 
-  // Layer 6 → 7: all study rhythm collected
-  if (currentLayer === 6 && nextLayer >= 7) {
+  // Layer 5 → 6: all study rhythm collected
+  if (currentLayer === 5 && nextLayer >= 6) {
     return ''
   }
 
@@ -343,13 +338,27 @@ function handleFinalize(
           console.error('[onboarding] addExamDates error:', err)
         }
 
+        // Save study preferences
+        try {
+          await saveStudyPreferences(userId, finalData)
+        } catch (err) {
+          console.error('[onboarding] saveStudyPreferences error:', err)
+        }
+
+        // Generate initial study plan
+        try {
+          await generateInitialStudyPlan(userId, finalData)
+        } catch (err) {
+          console.error('[onboarding] generateInitialStudyPlan error:', err)
+        }
+
         const ack = "You're all set! Your course is ready. Redirecting you now..."
         emit({ type: 'chunk', content: ack })
-        emit({ type: 'layer_advance', layer: 8 })
+        emit({ type: 'layer_advance', layer: 7 })
 
         await saveOnboardingMessage(sessionId, 'assistant', ack)
         await updateOnboardingSession(sessionId, {
-          current_layer: 8,
+          current_layer: 7,
           collected_data: finalData,
           status: 'completed',
           course_id: finalData.courseId,
@@ -410,7 +419,7 @@ function handleStructureGeneration(
 
         await saveOnboardingMessage(sessionId, 'assistant', msg)
         await updateOnboardingSession(sessionId, {
-          current_layer: Math.max(currentLayer, 4),
+          current_layer: Math.max(currentLayer, 3),
           collected_data: updatedData,
         })
 
@@ -468,7 +477,7 @@ function handleExamFormatInference(
         const assistantContent = `Looking up the exam format for ${courseName}...`
         await saveOnboardingMessage(sessionId, 'assistant', assistantContent)
         await updateOnboardingSession(sessionId, {
-          current_layer: Math.max(currentLayer, 4),
+          current_layer: Math.max(currentLayer, 3),
           collected_data: updatedData,
         })
 
@@ -560,5 +569,117 @@ async function addExamDates(userId: string, data: CollectedData): Promise<void> 
       notes: ed.notes ?? null,
       chapter_ids: ed.chapterIds ?? [],
     })
+  }
+}
+
+/**
+ * Parse minutesPerSession from pills label or number to integer
+ */
+function parseMinutesPerSession(value: number | string | undefined): number {
+  if (!value) return 30
+  if (typeof value === 'number') return value
+  const lower = value.toLowerCase()
+  if (lower.includes('2+')) return 120
+  if (lower.includes('1.5')) return 90
+  if (lower.includes('1 hour')) return 60
+  if (lower.includes('45')) return 45
+  if (lower.includes('30')) return 30
+  const num = parseInt(value, 10)
+  return isNaN(num) ? 30 : num
+}
+
+/**
+ * Save study preferences to the course record
+ */
+async function saveStudyPreferences(userId: string, data: CollectedData): Promise<void> {
+  if (!data.courseId) return
+  if (!data.sessionsPerWeek && !data.minutesPerSession && !data.preferredTimes) return
+
+  const svc = await createServiceClient()
+  await svc
+    .from('courses')
+    .update({
+      study_preferences: {
+        sessions_per_week: data.sessionsPerWeek ?? 4,
+        minutes_per_session: parseMinutesPerSession(data.minutesPerSession),
+        preferred_times: data.preferredTimes ?? [],
+        preferred_days: data.preferredDays ?? [],
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', data.courseId)
+    .eq('user_id', userId)
+}
+
+/**
+ * Generate initial study plan items for the next 7 days based on
+ * the user's study preferences and course topics.
+ */
+async function generateInitialStudyPlan(userId: string, data: CollectedData): Promise<void> {
+  if (!data.courseId) return
+
+  const sessionsPerWeek = data.sessionsPerWeek ?? 4
+  const minutesPerSession = parseMinutesPerSession(data.minutesPerSession)
+  const preferredTimes = data.preferredTimes ?? ['Morning']
+
+  // Map preferred time labels to clock times
+  const timeMap: Record<string, string> = {
+    Morning: '09:00',
+    Afternoon: '13:00',
+    Evening: '17:00',
+    Night: '20:00',
+  }
+  const defaultTime = timeMap[preferredTimes[0]] ?? '09:00'
+
+  // Fetch materialized topics for this course
+  const svc = await createServiceClient()
+  const { data: topics, error: topicsErr } = await svc
+    .from('topics')
+    .select('id, subject_id, name, sort_order')
+    .eq('course_id', data.courseId)
+    .order('sort_order', { ascending: true })
+
+  if (topicsErr || !topics || topics.length === 0) {
+    console.log('[onboarding] no topics found for course, skipping plan generation')
+    return
+  }
+
+  // Spread sessions across the next 7 days
+  const today = new Date()
+  const studyDays: string[] = []
+  for (let d = 0; d < 7 && studyDays.length < sessionsPerWeek; d++) {
+    const date = new Date(today)
+    date.setDate(today.getDate() + d)
+    studyDays.push(date.toISOString().slice(0, 10))
+  }
+
+  // Assign topics round-robin across study days
+  const items: Array<{
+    courseId: string; subjectId: string; topicId: string
+    scheduledDate: string; scheduledTime: string; durationMinutes: number
+    source: 'auto'
+  }> = []
+
+  for (let i = 0; i < studyDays.length; i++) {
+    const topic = topics[i % topics.length]
+    // Cycle through preferred times if multiple sessions per day (for now 1 per day)
+    const timeLabel = preferredTimes[i % preferredTimes.length]
+    const time = timeMap[timeLabel] ?? defaultTime
+
+    items.push({
+      courseId: data.courseId,
+      subjectId: topic.subject_id,
+      topicId: topic.id,
+      scheduledDate: studyDays[i],
+      scheduledTime: time,
+      durationMinutes: minutesPerSession,
+      source: 'auto',
+    })
+  }
+
+  if (items.length > 0) {
+    const { upsertStudyPlanItems } = await import('@/lib/db/studyPlanItems')
+    await upsertStudyPlanItems(userId, items)
+    console.log(`[onboarding] generated ${items.length} study plan items`)
   }
 }

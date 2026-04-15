@@ -19,30 +19,24 @@ export function computeCorrectLayer(
     // both set → advance to 3
     return 3
   }
-  // Layer 3 → 4: timing answered
+  // Layer 3: structure + exam format
   if (currentLayer === 3) {
-    const hasTimingAnswer = collectedData.semesterTiming || collectedData.examTimeline || collectedData.deadline
-    if (hasTimingAnswer) return 4
-  }
-  // Layer 4: structure + exam format
-  if (currentLayer === 4) {
-    // No structure yet → stay on 4 (route handler handles structure gen intercept)
-    if (!collectedData.structure) return 4
-    // Structure exists but no exam format decision yet → stay on 4 (show exam format pills)
-    // Check if examFormatSource was answered (user chose an option)
+    // No structure yet → stay on 3 (route handler handles structure gen intercept)
+    if (!collectedData.structure) return 3
+    // Structure exists but no exam format decision yet → stay on 3 (show exam format pills)
     const efs = collectedData.examFormatSource as string | undefined
-    if (!efs) return 4
-    // Exam format decision made (skip, or confirmed/rejected handled by route) → advance to 5
-    return 5
+    if (!efs) return 3
+    // Exam format decision made → advance to 4
+    return 4
   }
-  // Layer 5 → 6: exam dates answered (or skipped)
-  if (currentLayer === 5 && collectedData.examDates !== undefined) return 6
-  // Layer 6: three phases — sessions/week, then hours/session, then preferred times
-  if (currentLayer === 6) {
-    if (!collectedData.sessionsPerWeek) return 6
-    if (!collectedData.minutesPerSession) return 6
-    if (!collectedData.preferredTimes || collectedData.preferredTimes.length === 0) return 6
-    return 7
+  // Layer 4 → 5: exam dates answered (or skipped)
+  if (currentLayer === 4 && collectedData.examDates !== undefined) return 5
+  // Layer 5: three phases — sessions/week, then hours/session, then preferred times
+  if (currentLayer === 5) {
+    if (!collectedData.sessionsPerWeek) return 5
+    if (!collectedData.minutesPerSession) return 5
+    if (!collectedData.preferredTimes || collectedData.preferredTimes.length === 0) return 5
+    return 6
   }
   return currentLayer
 }
@@ -83,22 +77,7 @@ export function getDefaultCheckpointForLayer(
       }
       return { id: 'learningTopic', prompt: 'What do you want to learn?', inputType: 'text' }
     }
-    case 3: {
-      const st3 = String(collectedData.studyType ?? '').toLowerCase()
-      if (st3.includes('competitive')) {
-        return { id: 'examTimeline', prompt: 'How far away is your exam?', inputType: 'text' }
-      }
-      if (st3.includes('self')) {
-        return { id: 'deadline', prompt: 'Do you have a deadline in mind?', inputType: 'text' }
-      }
-      return {
-        id: 'semesterTiming',
-        prompt: 'Where are you in the semester?',
-        inputType: 'pills',
-        options: ['Just starting', 'Mid-semester', 'Final stretch', 'Between semesters'],
-      }
-    }
-    case 4:
+    case 3:
       if (collectedData.structure) {
         return {
           id: 'examFormatSource',
@@ -113,13 +92,13 @@ export function getDefaultCheckpointForLayer(
         inputType: 'pills',
         options: ["I'll upload my syllabus", "I'll paste/type it", 'Figure it out for me'],
       }
-    case 5:
+    case 4:
       return {
         id: 'examDates',
         prompt: 'When are your exams? Add dates below.',
         inputType: 'date_picker',
       }
-    case 6: {
+    case 5: {
       if (!collectedData.sessionsPerWeek) {
         return {
           id: 'sessionsPerWeek',
@@ -249,49 +228,27 @@ Now ask for the specific name. Use the appropriate checkpoint:
 
 IMPORTANT: Use these EXACT checkpoint IDs. When they answer, acknowledge briefly, then emit layer_advance to layer 3 AND the Layer 3 checkpoint:
 
-For college:
-\`\`\`checkpoint
-{"id":"semesterTiming","prompt":"Where are you in the semester?","inputType":"pills","options":["Just starting","Mid-semester","Final stretch","Between semesters"]}
-\`\`\`
-
-For competitive exams: {"id":"examTimeline","prompt":"How far away is your exam?","inputType":"text"}
-For self-paced: {"id":"deadline","prompt":"Do you have a deadline in mind?","inputType":"text"}`
-
-    case 3:
-      return `### Layer 3: Where are you now?
-Ask about their timing/progress. Emit appropriate checkpoint:
-
-For college:
-\`\`\`checkpoint
-{"id":"semesterTiming","prompt":"Where are you in the semester?","inputType":"pills","options":["Just starting","Mid-semester","Final stretch","Between semesters"]}
-\`\`\`
-
-For competitive exams: ask how far the exam is with a text checkpoint.
-For self-paced: ask if they have a deadline with a text checkpoint.
-
-When they answer, acknowledge briefly, then emit layer_advance to layer 4 AND the Layer 4 checkpoint:
-
 \`\`\`checkpoint
 {"id":"sourceType","prompt":"How should we set up your course structure?","inputType":"pills","options":["I'll upload my syllabus","I'll paste/type it","Figure it out for me"]}
 \`\`\``
 
-    case 4:
+    case 3:
       if (data.structure) {
-        // Structure already exists, move to 4b (exam format)
-        return `### Layer 4b: Exam Format
+        // Structure already exists, move to 3b (exam format)
+        return `### Layer 3b: Exam Format
 The course structure is already set up. Now ask about exam format:
 
 \`\`\`checkpoint
 {"id":"examFormatSource","prompt":"Should I figure out the exam format for you?","inputType":"pills","options":["Figure out the format for me","I'll upload a sample paper","Skip for now"]}
 \`\`\`
 
-When they answer, acknowledge briefly, then emit layer_advance to layer 5 AND the Layer 5 checkpoint:
+When they answer, acknowledge briefly, then emit layer_advance to layer 4 AND the Layer 4 checkpoint:
 
 \`\`\`checkpoint
 {"id":"examDates","prompt":"When are your exams? Add dates below.","inputType":"date_picker"}
 \`\`\``
       }
-      return `### Layer 4: Course Structure
+      return `### Layer 3: Course Structure
 Ask how they want to set up the course structure:
 
 \`\`\`checkpoint
@@ -299,44 +256,44 @@ Ask how they want to set up the course structure:
 \`\`\`
 
 If the student picks "Figure it out for me", the system will handle structure generation automatically. Just acknowledge and wait.
-When structure is confirmed (structure_confirm = true in collected data), the course is created. Stay on layer 4 — the system will handle moving to exam format.`
+When structure is confirmed (structure_confirm = true in collected data), the course is created. Stay on layer 3 — the system will handle moving to exam format.`
 
-    case 5:
-      return `### Layer 5: Exam Dates
+    case 4:
+      return `### Layer 4: Exam Dates
 Ask about upcoming exams/deadlines:
 
 \`\`\`checkpoint
 {"id":"examDates","prompt":"When are your exams? Add dates below.","inputType":"date_picker"}
 \`\`\`
 
-When they answer (or skip), acknowledge briefly, then emit layer_advance to layer 6 AND the Layer 6 checkpoint:
+When they answer (or skip), acknowledge briefly, then emit layer_advance to layer 5 AND the Layer 5 checkpoint:
 
 \`\`\`checkpoint
 {"id":"sessionsPerWeek","prompt":"How many days a week can you study?","inputType":"number_slider","min":2,"max":7,"step":1,"defaultValue":4}
 \`\`\``
 
-    case 6:
-      return `### Layer 6: Study Rhythm
+    case 5:
+      return `### Layer 5: Study Rhythm
 Ask about study habits. Emit this checkpoint:
 
 \`\`\`checkpoint
 {"id":"sessionsPerWeek","prompt":"How many days a week can you study?","inputType":"number_slider","min":2,"max":7,"step":1,"defaultValue":4}
 \`\`\`
 
-When they answer, acknowledge briefly, then emit layer_advance to layer 7. No checkpoint needed for layer 7 — just the layer_advance.`
+When they answer, acknowledge briefly, then emit layer_advance to layer 6. No checkpoint needed for layer 6 — just the layer_advance.`
 
-    case 7:
-      return `### Layer 7: Wrap Up
+    case 6:
+      return `### Layer 6: Wrap Up
 Summarize what you've set up and emit the finalize tool call:
 
 \`\`\`tool_call
 {"tool":"finalize","args":{"goal":"${data.studyType === 'competitive' ? 'exam_prep' : 'classwork'}"}}
 \`\`\`
 
-Emit layer_advance to layer 8.`
+Emit layer_advance to layer 7.`
 
-    case 8:
-      return `### Layer 8: Done!
+    case 7:
+      return `### Layer 7: Done!
 Say something brief and celebratory like "You're all set! Your course is ready." The system will redirect them automatically.`
 
     default:

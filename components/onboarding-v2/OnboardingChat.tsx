@@ -56,7 +56,7 @@ export function OnboardingChat() {
   }
 
   // Check if completed — redirect will be handled by the page
-  const isComplete = currentLayer >= 8 && !!collectedData.courseId
+  const isComplete = currentLayer >= 7 && !!collectedData.courseId
 
   return (
     <div className="flex flex-col h-full">

@@ -4,12 +4,11 @@ import { cn } from '@/lib/utils'
 const LAYERS = [
   { num: 1, label: 'Why' },
   { num: 2, label: 'What' },
-  { num: 3, label: 'Where' },
-  { num: 4, label: 'Materials' },
-  { num: 5, label: 'Exams' },
-  { num: 6, label: 'Rhythm' },
-  { num: 7, label: 'Plan' },
-  { num: 8, label: 'Start' },
+  { num: 3, label: 'Materials' },
+  { num: 4, label: 'Exams' },
+  { num: 5, label: 'Rhythm' },
+  { num: 6, label: 'Plan' },
+  { num: 7, label: 'Start' },
 ]
 
 export function LayerProgress({ currentLayer }: { currentLayer: number }) {

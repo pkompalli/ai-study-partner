@@ -16,13 +16,6 @@ ALTER TABLE public.courses
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
--- Backfill user_id from user_courses for existing rows
-UPDATE public.courses c
-SET user_id = uc.user_id
-FROM public.user_courses uc
-WHERE uc.course_id = c.id
-  AND uc.is_primary = true
-  AND c.user_id IS NULL;
 
 -- 2. Add missing columns to subjects table
 ALTER TABLE public.subjects
